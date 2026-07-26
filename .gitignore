@@ -1,0 +1,85 @@
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+.Python
+
+# ── Flutter / Dart ─────────────────────────────────────────────────────────
+app/.dart_tool/
+app/.packages
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.pub-cache/
+app/.pub/
+app/pubspec.lock
+app/ios/Pods/
+app/ios/.symlinks/
+app/web/flutter.js
+app/web/flutter_bootstrap.js
+
+# ── IDE ────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Environment & Secrets ─────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+service-account*.json
+credentials*.json
+
+# ── Media & Uploads ───────────────────────────────────────────────────────
+media/
+uploads/
+*.mp3
+*.wav
+*.ogg
+*.m4a
+
+# ── Database ──────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Test & Coverage ───────────────────────────────────────────────────────
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+coverage/
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Node (marketing site) ─────────────────────────────────────────────────
+node_modules/
+marketing/.astro/
+marketing/dist/
+
+# ── Qoder / Misc ──────────────────────────────────────────────────────────
+.qoder/
+*.canvas.tsx
