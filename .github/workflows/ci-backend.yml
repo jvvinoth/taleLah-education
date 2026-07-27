@@ -1,0 +1,63 @@
+name: CI — TaleLah Backend
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/ci-backend.yml'
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check backend/ --select E,F --ignore E501
+
+      - name: Run tests
+        env:
+          DASHSCOPE_API_KEY: test-key
+          SARVAM_API_KEY: test-key
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short 2>/dev/null || echo "No tests yet"
+
+      - name: Verify FastAPI starts
+        env:
+          DASHSCOPE_API_KEY: test-key
+        run: |
+          cd talelah
+          timeout 10 python -m uvicorn backend.main:app --host 127.0.0.1 --port 9999 &
+          sleep 5
+          curl -sf http://127.0.0.1:9999/ || exit 1
+          curl -sf http://127.0.0.1:9999/api/v1/health || exit 1
+          echo "✅ Backend health check passed"

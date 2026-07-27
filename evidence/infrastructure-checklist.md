@@ -68,31 +68,19 @@
 #      Status: ❌
 # Recommendation: Vercel (if you already use it) or Cloudflare Pages
 
-### 3.3 Database
-# Options (pick ONE):
-#   a) Supabase — PostgreSQL + Auth + Storage in one
-#      URL: https://supabase.com/ → New Project
-#      Status: ❌
-#      Env var: DATABASE_URL=postgresql+asyncpg://...
-#   b) Neon — serverless PostgreSQL, great free tier
-#      URL: https://neon.tech/ → New Project
-#      Status: ❌
-#   c) Alibaba Cloud ApsaraDB — if optimizing for judge perception
-#      Status: ❌
-# Recommendation: Supabase (Postgres + Auth + Storage bundled)
-# Notes: Dev uses SQLite (already configured), prod needs PostgreSQL
+### 3.3 Database — Neon (CONFIRMED)
+# URL: https://console.neon.tech/ → New Project → copy connection string
+# Status: ❌ (sign up → create project → copy DATABASE_URL)
+# Env var: DATABASE_URL=postgresql+asyncpg://...
+# Notes: Serverless PostgreSQL. Dev still uses SQLite; prod uses Neon.
+# Object storage is separate (media/photos) — use Cloudflare R2 or Alibaba OSS.
 
-### 3.4 Object Storage (Media/Photos)
-# Options (pick ONE):
-#   a) Supabase Storage — included with Supabase
-#      Status: ❌
-#   b) Alibaba Cloud OSS — for judge perception
-#      URL: https://oss.console.aliyun.com/
-#      Status: ❌
-#   c) Cloudflare R2 — S3-compatible, no egress fees
-#      URL: https://dash.cloudflare.com/ → R2
-#      Status: ❌
-# Recommendation: Supabase Storage (bundled) or Cloudflare R2
+### 3.4 Object Storage — Cloudflare R2 (CONFIRMED)
+# URL: https://dash.cloudflare.com/ → R2 → Create bucket "talelah-media"
+# Status: ❌ (create bucket → generate API token with R2 write access)
+# Env vars: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
+# Notes: S3-compatible, zero egress fees. Used for parent photo uploads + voice notes.
+# Dev: local ./media/ folder. Prod: R2 bucket.
 
 ### 3.5 Domain
 # Options:
