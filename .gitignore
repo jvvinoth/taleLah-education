@@ -85,3 +85,6 @@ marketing/dist/
 # ── Qoder / Misc ──────────────────────────────────────────────────────────
 .qoder/
 *.canvas.tsx
+
+# Local screenshots
+.screenshots/

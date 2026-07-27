@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'providers/app_state.dart';
 import 'screens/parent_home.dart';
 import 'services/api_client.dart';
+import 'theme/app_theme.dart';
+import 'theme/mobile_frame.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,21 +35,9 @@ class TaleLahApp extends StatelessWidget {
     return MaterialApp(
       title: 'TaleLah',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFFF6B35),
-          brightness: Brightness.light,
-        ),
-        fontFamily: 'Nunito',
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(centerTitle: true),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      ),
+      theme: TaleLahTheme.light(),
+      // Show as a phone frame preview on wide (desktop browser) screens
+      builder: (context, child) => MobileFrame(child: child!),
       home: const SplashGate(),
     );
   }
@@ -62,21 +52,56 @@ class SplashGate extends StatelessWidget {
     final app = context.watch<AppState>();
 
     if (!app.isLoggedIn) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('🐦', style: TextStyle(fontSize: 64)),
-              SizedBox(height: 16),
-              Text('TaleLah',
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Text('Everyday moments. Mother-tongue magic.',
-                  style: TextStyle(color: Colors.grey)),
-              SizedBox(height: 24),
-              CircularProgressIndicator(color: Color(0xFFFF6B35)),
-            ],
+      return Container(
+        decoration: const BoxDecoration(gradient: TGradients.page),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 110,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    gradient: TGradients.coral,
+                    shape: BoxShape.circle,
+                    boxShadow: TShadows.glowCoral,
+                  ),
+                  child: const Center(
+                    child: Text('🐦', style: TextStyle(fontSize: 52)),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                const Text(
+                  'TaleLah',
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1,
+                    color: TColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Everyday moments. Mother-tongue magic.',
+                  style: TextStyle(
+                    color: TColors.inkSoft,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 36),
+                const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    color: TColors.coral,
+                    strokeWidth: 3,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );

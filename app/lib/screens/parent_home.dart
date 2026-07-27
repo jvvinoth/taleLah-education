@@ -1,8 +1,10 @@
-/// Parent Home — moment capture + review generated packages.
+/// Parent Home — premium moment capture + story review.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../theme/app_theme.dart';
 import 'child_session.dart';
+import 'family_mode.dart';
 
 class ParentHomeScreen extends StatefulWidget {
   const ParentHomeScreen({super.key});
@@ -14,6 +16,13 @@ class ParentHomeScreen extends StatefulWidget {
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
   final _textController = TextEditingController();
   String _selectedLocale = 'ta-SG';
+  int _navIndex = 0;
+
+  static const _locales = [
+    ('ta-SG', 'தமிழ்', 'Tamil'),
+    ('zh-SG', '中文', 'Chinese'),
+    ('ms-SG', 'Melayu', 'Malay'),
+  ];
 
   @override
   void dispose() {
@@ -24,261 +33,777 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final topPad = MediaQuery.of(context).padding.top;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('TaleLah'),
-        backgroundColor: const Color(0xFFFF6B35),
-        foregroundColor: Colors.white,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Container(
+      decoration: const BoxDecoration(gradient: TGradients.page),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
           children: [
-            // ── Child profile section ────────────────────────────────
-            _buildProfileSection(app),
-            const SizedBox(height: 24),
-
-            // ── Moment capture ──────────────────────────────────────
-            _buildMomentCapture(app),
-            const SizedBox(height: 24),
-
-            // ── Progress / latest package ───────────────────────────
-            if (app.isGenerating) _buildProgress(app),
-            if (app.latestPackage != null && !app.isGenerating)
-              _buildPackageCard(app),
+            SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 120),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildHeader(app),
+                  const SizedBox(height: 24),
+                  _buildHeroCard(app),
+                  const SizedBox(height: 24),
+                  _buildSectionTitle('Capture a Moment', 'Turn today into a story'),
+                  const SizedBox(height: 12),
+                  _buildMomentCapture(app),
+                  const SizedBox(height: 24),
+                  if (app.isGenerating) ...[
+                    _buildProgress(app),
+                    const SizedBox(height: 24),
+                  ],
+                  if (app.latestPackage != null && !app.isGenerating) ...[
+                    _buildSectionTitle('Story Ready', 'Review & play together'),
+                    const SizedBox(height: 12),
+                    _buildPackageCard(app),
+                  ],
+                ],
+              ),
+            ),
+            // Floating bottom nav
+            Positioned(
+              left: 24,
+              right: 24,
+              bottom: MediaQuery.of(context).padding.bottom + 16,
+              child: _buildBottomNav(app),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProfileSection(AppState app) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.child_care, color: Color(0xFFFF6B35)),
-                const SizedBox(width: 8),
-                Text(
-                  app.activeProfile?.alias ?? 'No child profile',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (app.activeProfile != null) ...[
-              Text('Age: ${app.activeProfile!.ageBand}'),
-              Text('Language: ${app.activeProfile!.targetLocale}'),
-            ],
-            const SizedBox(height: 12),
-            if (app.profiles.isEmpty)
-              ElevatedButton.icon(
-                onPressed: () => _showCreateProfileDialog(app),
-                icon: const Icon(Icons.add),
-                label: const Text('Add Child Profile'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF6B35),
-                  foregroundColor: Colors.white,
+  // ── Header ──────────────────────────────────────────────────────────
+
+  Widget _buildHeader(AppState app) {
+    return Row(
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            gradient: TGradients.coral,
+            shape: BoxShape.circle,
+            boxShadow: TShadows.glowCoral,
+          ),
+          child: const Center(
+            child: Text('🐦', style: TextStyle(fontSize: 26)),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Vanakkam 👋',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: TColors.inkSoft,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
+              const SizedBox(height: 2),
+              const Text(
+                'TaleLah',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _iconBubble(Icons.notifications_none_rounded),
+      ],
+    );
+  }
+
+  Widget _iconBubble(IconData icon) {
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: TShadows.card,
+      ),
+      child: Icon(icon, color: TColors.ink, size: 22),
+    );
+  }
+
+  // ── Hero card ───────────────────────────────────────────────────────
+
+  Widget _buildHeroCard(AppState app) {
+    final childName = app.activeProfile?.alias;
+    return TCard(
+      gradient: TGradients.hero,
+      radius: 28,
+      shadows: TShadows.glowViolet,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  "✨ Today's Adventure",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              const Text('🚂', style: TextStyle(fontSize: 28)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            childName != null
+                ? "$childName's mother-tongue\njourney awaits"
+                : 'Every moment becomes\na magical story',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              height: 1.25,
+              letterSpacing: -0.4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '5-minute stories • Real family moments',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.75),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Child profile pill / add child
+          if (app.activeProfile != null)
+            _childPill(app)
+          else
+            _addChildButton(app),
+        ],
+      ),
+    );
+  }
+
+  Widget _childPill(AppState app) {
+    final p = app.activeProfile!;
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(40),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                p.alias.isNotEmpty ? p.alias[0].toUpperCase() : '🙂',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: TColors.violetDeep,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                p.alias,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                'Age ${p.ageBand} • ${_localeName(p.targetLocale)}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 14),
+        ],
+      ),
+    );
+  }
+
+  Widget _addChildButton(AppState app) {
+    return GestureDetector(
+      onTap: () => _showCreateProfileDialog(app),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(40),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_rounded, color: TColors.violetDeep, size: 20),
+            SizedBox(width: 6),
+            Text(
+              'Add your child',
+              style: TextStyle(
+                color: TColors.violetDeep,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
+  // ── Section title ───────────────────────────────────────────────────
+
+  Widget _buildSectionTitle(String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            fontSize: 13,
+            color: TColors.inkFaint,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Moment capture ──────────────────────────────────────────────────
+
   Widget _buildMomentCapture(AppState app) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.auto_stories, color: Color(0xFF2E86AB)),
-                SizedBox(width: 8),
-                Text(
-                  'Capture a Moment',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
+    return TCard(
+      radius: 28,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Text field
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F5FC),
+              borderRadius: BorderRadius.circular(18),
             ),
-            const SizedBox(height: 4),
-            const Text(
-              'What did your child do today?',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            TextField(
+            child: TextField(
               controller: _textController,
               maxLines: 3,
               maxLength: 500,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
-                hintText: 'e.g. Arun saw a red train at the MRT station',
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: Colors.grey[50],
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Language selector
-            Row(
-              children: [
-                const Text('Language: '),
-                const SizedBox(width: 8),
-                DropdownButton<String>(
-                  value: _selectedLocale,
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'ta-SG', child: Text('🇸🇬 Tamil')),
-                    DropdownMenuItem(
-                        value: 'zh-SG', child: Text('🇸🇬 Chinese')),
-                    DropdownMenuItem(
-                        value: 'ms-SG', child: Text('🇸🇬 Malay')),
-                  ],
-                  onChanged: (v) => setState(() => _selectedLocale = v!),
+                hintText:
+                    'What did your child do today?\ne.g. Arun saw a red train at the MRT…',
+                hintStyle: const TextStyle(
+                  color: TColors.inkFaint,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: app.activeProfile == null || app.isGenerating
-                    ? null
-                    : () => _startGeneration(app),
-                icon: const Icon(Icons.auto_awesome),
-                label: Text(app.isGenerating
-                    ? 'Generating...'
-                    : 'Create Story ✨'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E86AB),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                counterText: '',
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.all(16),
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.only(left: 12, right: 8, bottom: 40),
+                  child: Icon(Icons.auto_awesome,
+                      color: TColors.violet.withValues(alpha: 0.6), size: 20),
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgress(AppState app) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: const Color(0xFFF0F7FF),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            LinearProgressIndicator(
-              value: app.progressPct / 100,
-              backgroundColor: Colors.grey[200],
-              color: const Color(0xFF2E86AB),
-              minHeight: 8,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              app.generationStatus,
-              style: const TextStyle(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${app.progressPct.toStringAsFixed(0)}%',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF2E86AB),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPackageCard(AppState app) {
-    final pkg = app.latestPackage!;
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: const Color(0xFFF0FFF0),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.green),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    pkg.title.isEmpty ? 'Story Ready!' : pkg.title,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('${pkg.sceneCount} scenes • ${pkg.localeLabel}'),
-            if (pkg.targetPhrase.isNotEmpty)
-              Text('Target phrase: ${pkg.targetPhrase}'),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _approveAndStart(app),
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Approve & Play'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+          const SizedBox(height: 16),
+          // Language pills
+          Row(
+            children: _locales.map((l) {
+              final selected = _selectedLocale == l.$1;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedLocale = l.$1),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selected ? TColors.ink : const Color(0xFFF2F0F9),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          l.$2,
+                          style: TextStyle(
+                            color: selected ? Colors.white : TColors.inkSoft,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          l.$3,
+                          style: TextStyle(
+                            color: selected
+                                ? Colors.white.withValues(alpha: 0.6)
+                                : TColors.inkFaint,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 18),
+          // CTA
+          GestureDetector(
+            onTap: app.activeProfile == null || app.isGenerating
+                ? null
+                : () => _startGeneration(app),
+            child: Container(
+              height: 58,
+              decoration: BoxDecoration(
+                gradient: app.activeProfile == null || app.isGenerating
+                    ? null
+                    : TGradients.coral,
+                color: app.activeProfile == null || app.isGenerating
+                    ? const Color(0xFFE8E5F2)
+                    : null,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: app.activeProfile == null || app.isGenerating
+                    ? null
+                    : TShadows.glowCoral,
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_fix_high_rounded,
+                      color: app.activeProfile == null || app.isGenerating
+                          ? TColors.inkFaint
+                          : Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      app.isGenerating ? 'Weaving magic…' : 'Create Story',
+                      style: TextStyle(
+                        color: app.activeProfile == null || app.isGenerating
+                            ? TColors.inkFaint
+                            : Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
+  // ── Generation progress ─────────────────────────────────────────────
+
+  static const _agentSteps = [
+    ('moment_lens', '🔍', 'Understanding'),
+    ('learning_planner', '📚', 'Planning'),
+    ('story_weaver', '📖', 'Weaving'),
+    ('language_guardian', '🗣️', 'Translating'),
+    ('family_voice_director', '🎙️', 'Voicing'),
+  ];
+
+  Widget _buildProgress(AppState app) {
+    final activeIdx =
+        _agentSteps.indexWhere((s) => s.$1 == app.currentAgent);
+    return TCard(
+      gradient: TGradients.night,
+      radius: 28,
+      padding: const EdgeInsets.all(24),
+      shadows: TShadows.glowViolet,
+      child: Column(
+        children: [
+          Text(
+            app.generationStatus,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${app.progressPct.toStringAsFixed(0)}% complete',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: app.progressPct / 100,
+              minHeight: 10,
+              backgroundColor: Colors.white.withValues(alpha: 0.10),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF8B7CF6)),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Agent step chips
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(_agentSteps.length, (i) {
+              final step = _agentSteps[i];
+              final done = activeIdx > i ||
+                  app.progressPct >= ((i + 1) / _agentSteps.length) * 100;
+              final active = activeIdx == i && !done;
+              return Column(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: done
+                          ? const Color(0xFF43D9B8)
+                          : active
+                              ? const Color(0xFF8B7CF6)
+                              : Colors.white.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                      boxShadow: active
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF8B7CF6)
+                                    .withValues(alpha: 0.5),
+                                blurRadius: 16,
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: Center(
+                      child: done
+                          ? const Icon(Icons.check_rounded,
+                              color: Colors.white, size: 20)
+                          : Text(step.$2,
+                              style: const TextStyle(fontSize: 18)),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    step.$3,
+                    style: TextStyle(
+                      color: done || active
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.35),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Package ready card ──────────────────────────────────────────────
+
+  Widget _buildPackageCard(AppState app) {
+    final pkg = app.latestPackage!;
+    return TCard(
+      radius: 28,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: TGradients.mint,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child:
+                    const Center(child: Text('📖', style: TextStyle(fontSize: 30))),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      pkg.title.isEmpty ? 'Your Story is Ready!' : pkg.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _miniTag('${pkg.sceneCount} scenes', TColors.lavender,
+                            TColors.violetDeep),
+                        const SizedBox(width: 6),
+                        _miniTag(pkg.localeLabel, TColors.mint,
+                            const Color(0xFF0F9D8A)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (pkg.targetPhrase.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: TColors.lemon,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '🎯 TARGET PHRASE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFB8860B),
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    pkg.targetPhrase,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: () => _approveAndStart(app),
+            child: Container(
+              height: 54,
+              decoration: BoxDecoration(
+                gradient: TGradients.hero,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: TShadows.glowViolet,
+              ),
+              child: const Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.play_arrow_rounded,
+                        color: Colors.white, size: 24),
+                    SizedBox(width: 6),
+                    Text(
+                      'Approve & Play Together',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniTag(String text, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: fg),
+      ),
+    );
+  }
+
+  // ── Bottom nav ──────────────────────────────────────────────────────
+
+  Widget _buildBottomNav(AppState app) {
+    final items = [
+      (Icons.home_rounded, 'Home'),
+      (Icons.auto_stories_rounded, 'Stories'),
+      (Icons.family_restroom_rounded, 'Family'),
+      (Icons.person_rounded, 'Profile'),
+    ];
+    return Container(
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(34),
+        boxShadow: [
+          BoxShadow(
+            color: TColors.ink.withValues(alpha: 0.12),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: List.generate(items.length, (i) {
+          final selected = _navIndex == i;
+          return GestureDetector(
+            onTap: () => _onNavTap(i, app),
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: selected ? TColors.peach : Colors.transparent,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    items[i].$1,
+                    color: selected ? TColors.coral : TColors.inkFaint,
+                    size: 24,
+                  ),
+                  if (selected) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      items[i].$2,
+                      style: const TextStyle(
+                        color: TColors.coral,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  void _onNavTap(int i, AppState app) {
+    if (i == 2) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const FamilyModeScreen()),
+      );
+      return;
+    }
+    if (i == 1 || i == 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Coming soon in Sprint 2 ✨')),
+      );
+      return;
+    }
+    setState(() => _navIndex = i);
+  }
+
   // ── Actions ─────────────────────────────────────────────────────────
+
+  String _localeName(String locale) {
+    switch (locale) {
+      case 'ta-SG':
+        return 'Tamil';
+      case 'zh-SG':
+        return 'Chinese';
+      case 'ms-SG':
+        return 'Malay';
+      default:
+        return locale;
+    }
+  }
 
   void _startGeneration(AppState app) {
     final text = _textController.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please describe the moment')),
+        const SnackBar(content: Text('Please describe the moment first')),
       );
       return;
     }
     app.captureAndGenerate(text: text, locale: _selectedLocale);
     _textController.clear();
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _approveAndStart(AppState app) async {
@@ -294,39 +819,77 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     final nameCtrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Child'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Child\'s name',
-                hintText: 'e.g. Arun',
+      builder: (ctx) => Dialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('👶', style: TextStyle(fontSize: 40),
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              const Text(
+                'Add Your Child',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F5FC),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: TextField(
+                  controller: nameCtrl,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  decoration: const InputDecoration(
+                    hintText: "Child's name (e.g. Arun)",
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.all(16),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              GestureDetector(
+                onTap: () async {
+                  if (nameCtrl.text.trim().isEmpty) return;
+                  await app.createProfile(
+                    alias: nameCtrl.text.trim(),
+                    ageBand: '5-6',
+                    targetLocale: _selectedLocale,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Container(
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: TGradients.coral,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'Add Child',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel',
+                    style: TextStyle(color: TColors.inkFaint)),
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (nameCtrl.text.isNotEmpty) {
-                await app.createProfile(
-                  alias: nameCtrl.text,
-                  ageBand: '5-6',
-                  targetLocale: _selectedLocale,
-                );
-                if (ctx.mounted) Navigator.pop(ctx);
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
       ),
     );
   }

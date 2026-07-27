@@ -1,7 +1,8 @@
-/// Child Session — interactive story playback with narration and choices.
+/// Child Session — premium interactive story playback with narration and choices.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../theme/app_theme.dart';
 import 'family_mode.dart';
 
 class ChildSessionScreen extends StatefulWidget {
@@ -25,7 +26,12 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       emoji: '🚂',
       interaction: 'speak',
       prompt: 'Can you say "சிவப்பு" (sivappu — red)?',
-      color: const Color(0xFFFFE0E0),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFFE8E0), Color(0xFFFFF0F4), Color(0xFFFDEBFF)],
+      ),
+      accent: TColors.coral,
     ),
     _DemoScene(
       title: 'At the Station',
@@ -33,9 +39,14 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       english: 'Arun waited at the station.',
       emoji: '🚉',
       interaction: 'choice',
-      prompt: 'What color is the train? Red or Blue?',
-      choices: ['Red (சிவப்பு)', 'Blue (நீலம்)'],
-      color: const Color(0xFFE0F0FF),
+      prompt: 'What color is the train?',
+      choices: ['🔴 Red (சிவப்பு)', '🔵 Blue (நீலம்)'],
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFE3F1FF), Color(0xFFEDEAFF), Color(0xFFF3F9FF)],
+      ),
+      accent: TColors.violet,
     ),
     _DemoScene(
       title: 'The Journey',
@@ -44,7 +55,12 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       emoji: '🌻',
       interaction: 'speak',
       prompt: 'Say "மஞ்சள்" (manjal — yellow)!',
-      color: const Color(0xFFFFF8E0),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFFF6DC), Color(0xFFFFF0E5), Color(0xFFFFFBEA)],
+      ),
+      accent: TColors.amber,
     ),
     _DemoScene(
       title: 'Mission Time!',
@@ -53,7 +69,12 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       emoji: '🎯',
       interaction: 'mission',
       prompt: 'Go find something red and show it to Amma/Appa!',
-      color: const Color(0xFFE8F5E9),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFE0F7F1), Color(0xFFE8FBEF), Color(0xFFEFFFF6)],
+      ),
+      accent: TColors.teal,
     ),
   ];
 
@@ -66,89 +87,166 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     }
 
     final scene = _demoScenes[_currentScene];
+    final topPad = MediaQuery.of(context).padding.top;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: scene.color,
-      body: SafeArea(
-        child: Column(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      decoration: BoxDecoration(gradient: scene.gradient),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Column(
           children: [
-            // Progress bar
+            // Top bar — close + progress dots
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(20, topPad + 12, 20, 0),
               child: Row(
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
+                  _roundButton(
+                    Icons.close_rounded,
+                    onTap: () => Navigator.pop(context),
                   ),
-                  Expanded(
-                    child: LinearProgressIndicator(
-                      value: (_currentScene + 1) / _demoScenes.length,
-                      backgroundColor: Colors.white60,
-                      color: const Color(0xFFFF6B35),
-                      minHeight: 8,
+                  const Spacer(),
+                  ...List.generate(_demoScenes.length, (i) {
+                    final active = i == _currentScene;
+                    final done = i < _currentScene;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: active ? 28 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: active
+                            ? scene.accent
+                            : done
+                                ? scene.accent.withValues(alpha: 0.5)
+                                : Colors.white.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    );
+                  }),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: TShadows.card,
+                    ),
+                    child: Text(
+                      '${_currentScene + 1}/${_demoScenes.length}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: TColors.ink,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text('${_currentScene + 1}/${_demoScenes.length}',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
 
             // Scene content
             Expanded(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Big emoji
-                    Text(
-                      scene.emoji,
-                      style: const TextStyle(fontSize: 80),
+                    const SizedBox(height: 24),
+                    // Big emoji in soft bubble
+                    Container(
+                      width: 130,
+                      height: 130,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: scene.accent.withValues(alpha: 0.25),
+                            blurRadius: 40,
+                            offset: const Offset(0, 14),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(scene.emoji,
+                            style: const TextStyle(fontSize: 64)),
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
 
                     // Scene title
                     Text(
                       scene.title,
                       style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                        color: TColors.ink,
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
-                    // Target language narration
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                    // Glass narration card
+                    TCard(
+                      radius: 26,
+                      padding: const EdgeInsets.all(22),
+                      shadows: TShadows.soft,
                       child: Column(
                         children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: TColors.lavender,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  '🔊 LISTEN',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: TColors.violetDeep,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           Text(
                             scene.narration,
-                            style: const TextStyle(fontSize: 22),
+                            style: const TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w700,
+                              height: 1.45,
+                              color: TColors.ink,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 8),
                           Text(
                             scene.english,
-                            style: TextStyle(
-                                fontSize: 14, color: Colors.grey[600]),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: TColors.inkFaint,
+                              fontWeight: FontWeight.w600,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 22),
 
                     // Interaction area
                     _buildInteraction(scene),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -156,32 +254,58 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
 
             // Navigation buttons
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(24, 8, 24, bottomPad + 20),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   if (_currentScene > 0)
-                    TextButton.icon(
-                      onPressed: () =>
-                          setState(() => _currentScene--),
-                      icon: const Icon(Icons.arrow_back),
-                      label: const Text('Back'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  ElevatedButton.icon(
-                    onPressed: () => _nextScene(),
-                    icon: Icon(_currentScene == _demoScenes.length - 1
-                        ? Icons.check
-                        : Icons.arrow_forward),
-                    label: Text(_currentScene == _demoScenes.length - 1
-                        ? 'Finish!'
-                        : 'Next'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6B35),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
+                    _roundButton(
+                      Icons.arrow_back_rounded,
+                      onTap: () => setState(() => _currentScene--),
+                    ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _nextScene,
+                    child: Container(
+                      height: 56,
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      decoration: BoxDecoration(
+                        gradient: _currentScene == _demoScenes.length - 1
+                            ? TGradients.mint
+                            : TGradients.coral,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: _currentScene == _demoScenes.length - 1
+                            ? [
+                                BoxShadow(
+                                  color: TColors.teal.withValues(alpha: 0.35),
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ]
+                            : TShadows.glowCoral,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _currentScene == _demoScenes.length - 1
+                                ? 'Finish!'
+                                : 'Next',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            _currentScene == _demoScenes.length - 1
+                                ? Icons.celebration_rounded
+                                : Icons.arrow_forward_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -189,6 +313,22 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _roundButton(IconData icon, {required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: TShadows.card,
+        ),
+        child: Icon(icon, color: TColors.ink, size: 20),
       ),
     );
   }
@@ -201,32 +341,53 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
             Text(
               scene.prompt,
               style: const TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w600),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: TColors.inkSoft,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            // Gradient mic ring
             GestureDetector(
               onTap: () => setState(() => _isPlaying = !_isPlaying),
-              child: Container(
-                width: 80,
-                height: 80,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                width: 92,
+                height: 92,
                 decoration: BoxDecoration(
-                  color: _isPlaying
-                      ? const Color(0xFFFF6B35)
-                      : const Color(0xFF2E86AB),
+                  gradient:
+                      _isPlaying ? TGradients.coral : TGradients.hero,
                   shape: BoxShape.circle,
+                  boxShadow: _isPlaying
+                      ? TShadows.glowCoral
+                      : TShadows.glowViolet,
                 ),
-                child: Icon(
-                  _isPlaying ? Icons.stop : Icons.mic,
-                  color: Colors.white,
-                  size: 40,
+                child: Container(
+                  margin: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      width: 2,
+                    ),
+                  ),
+                  child: Icon(
+                    _isPlaying ? Icons.stop_rounded : Icons.mic_rounded,
+                    color: Colors.white,
+                    size: 38,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
-              _isPlaying ? 'Listening...' : 'Tap to speak',
-              style: TextStyle(color: Colors.grey[600]),
+              _isPlaying ? 'Listening…' : 'Tap to speak',
+              style: const TextStyle(
+                color: TColors.inkFaint,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         );
@@ -237,59 +398,96 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
             Text(
               scene.prompt,
               style: const TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w600),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: TColors.inkSoft,
+              ),
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
-            ...?scene.choices?.map((choice) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: SizedBox(
+            const SizedBox(height: 14),
+            ...?scene.choices?.map(
+              (choice) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: GestureDetector(
+                  onTap: _nextScene,
+                  child: Container(
                     width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => _nextScene(),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: const BorderSide(
-                            color: Color(0xFF2E86AB), width: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: TShadows.card,
+                      border: Border.all(
+                        color: scene.accent.withValues(alpha: 0.25),
+                        width: 1.5,
                       ),
-                      child: Text(choice,
-                          style: const TextStyle(fontSize: 16)),
+                    ),
+                    child: Text(
+                      choice,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: TColors.ink,
+                      ),
                     ),
                   ),
-                )),
+                ),
+              ),
+            ),
           ],
         );
 
       case 'mission':
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFF6B35),
-            borderRadius: BorderRadius.circular(16),
-          ),
+        return TCard(
+          gradient: TGradients.night,
+          radius: 26,
+          padding: const EdgeInsets.all(24),
+          shadows: TShadows.glowViolet,
           child: Column(
             children: [
-              const Icon(Icons.explore, color: Colors.white, size: 48),
-              const SizedBox(height: 8),
+              const Text('🧭', style: TextStyle(fontSize: 44)),
+              const SizedBox(height: 10),
               Text(
                 scene.prompt,
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
                   color: Colors.white,
+                  height: 1.4,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: () => Navigator.push(
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const FamilyModeScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const FamilyModeScreen()),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFFFF6B35),
+                child: Container(
+                  height: 52,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('👨‍👩‍👧', style: TextStyle(fontSize: 18)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Start Family Mission',
+                        style: TextStyle(
+                          color: TColors.violetDeep,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Text('Start Family Mission'),
               ),
             ],
           ),
@@ -312,62 +510,157 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   }
 
   Widget _buildCompleteScreen(AppState app) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0FFF0),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('🎉', style: TextStyle(fontSize: 80)),
-                const SizedBox(height: 16),
-                const Text(
-                  'Great job today!',
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${app.activeProfile?.alias ?? "Little one"} learned new Tamil words!',
-                  style: TextStyle(fontSize: 18, color: Colors.grey[700]),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Container(
+      decoration: const BoxDecoration(gradient: TGradients.page),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(28, 24, 28, bottomPad + 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 140,
+                    height: 140,
+                    decoration: BoxDecoration(
+                      gradient: TGradients.mint,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: TColors.teal.withValues(alpha: 0.35),
+                          blurRadius: 50,
+                          offset: const Offset(0, 16),
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Text('🎉', style: TextStyle(fontSize: 64)),
+                    ),
                   ),
-                  child: const Column(
+                  const SizedBox(height: 28),
+                  const Text(
+                    'Great job today!',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                      color: TColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${app.activeProfile?.alias ?? "Little one"} learned new Tamil words!',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: TColors.inkSoft,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  // Stat chips
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('🌱 Next time, try:',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 8),
-                      Text('Describe the color of your favorite toy in Tamil!',
-                          style: TextStyle(fontSize: 16),
-                          textAlign: TextAlign.center),
+                      _statChip('🗣️', '2 words', TColors.peach),
+                      const SizedBox(width: 10),
+                      _statChip('📖', '4 scenes', TColors.lavender),
+                      const SizedBox(width: 10),
+                      _statChip('🎯', '1 mission', TColors.mint),
                     ],
                   ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.home),
-                  label: const Text('Back to Home'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF6B35),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 32, vertical: 16),
+                  const SizedBox(height: 24),
+                  TCard(
+                    radius: 24,
+                    padding: const EdgeInsets.all(20),
+                    child: const Column(
+                      children: [
+                        Text(
+                          '🌱 NEXT TIME, TRY',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: TColors.inkFaint,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Describe the color of your favorite toy in Tamil!',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: TColors.ink,
+                            height: 1.4,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 28),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      height: 58,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: TGradients.coral,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: TShadows.glowCoral,
+                      ),
+                      child: const Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.home_rounded,
+                                color: Colors.white, size: 22),
+                            SizedBox(width: 8),
+                            Text(
+                              'Back to Home',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _statChip(String emoji, String label, Color bg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 20)),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: TColors.ink,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -381,7 +674,8 @@ class _DemoScene {
   final String interaction;
   final String prompt;
   final List<String>? choices;
-  final Color color;
+  final Gradient gradient;
+  final Color accent;
 
   const _DemoScene({
     required this.title,
@@ -391,6 +685,7 @@ class _DemoScene {
     required this.interaction,
     required this.prompt,
     this.choices,
-    this.color = Colors.white,
+    required this.gradient,
+    required this.accent,
   });
 }
