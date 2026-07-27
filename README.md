@@ -10,6 +10,8 @@ Everyday moments. Mother-tongue magic. Built for the Qoder × Alibaba Cloud SG 2
 
 **Tier 3 — reference only:** [`docs/PRD.md`](docs/PRD.md) — full source of truth. Do not paste wholesale.
 
+**Sprint roadmap:** [`docs/SPRINT-PLAN.md`](docs/SPRINT-PLAN.md) — reconciled feature plan (F1–F10) with AC coverage and degradation ladder.
+
 ## Which specs per Qoder Quest
 
 | Quest | Load these specs (+ always `AGENTS.md`) |
