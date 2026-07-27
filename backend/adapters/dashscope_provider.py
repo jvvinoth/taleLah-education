@@ -81,14 +81,14 @@ class DashScopeLLMProvider(LLMProvider):
         if text.startswith("```"):
             lines = text.split("\n")
             # Remove first and last lines (``` markers)
-            lines = [l for l in lines[1:] if not l.strip().startswith("```")]
+            lines = [ln for ln in lines[1:] if not ln.strip().startswith("```")]
             text = "\n".join(lines)
 
         try:
             result = json.loads(text)
             return result if isinstance(result, dict) else {"data": result}
         except json.JSONDecodeError:
-            logger.warning(f"[DashScope LLM] Failed to parse JSON, returning raw")
+            logger.warning("[DashScope LLM] Failed to parse JSON, returning raw")
             return {"raw": text}
 
     async def close(self):
@@ -177,7 +177,7 @@ class DashScopeVisionProvider(VisionProvider):
         text = raw.strip()
         if text.startswith("```"):
             lines = text.split("\n")
-            lines = [l for l in lines[1:] if not l.strip().startswith("```")]
+            lines = [ln for ln in lines[1:] if not ln.strip().startswith("```")]
             text = "\n".join(lines)
 
         try:

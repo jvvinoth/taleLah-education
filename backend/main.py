@@ -56,8 +56,8 @@ async def startup():
 
     # ── Initialize providers ──────────────────────────────────────────────
     from .adapters.dashscope_provider import DashScopeLLMProvider, DashScopeVisionProvider
-    from .adapters.sarvam_provider import SarvamTTSProvider, SarvamASRProvider
-    from .adapters.google_provider import GoogleTTSProvider, GoogleASRProvider
+    from .adapters.sarvam_provider import SarvamTTSProvider
+    from .adapters.google_provider import GoogleTTSProvider
 
     # LLM provider (Qwen-Max via DashScope)
     llm: Optional[DashScopeLLMProvider] = None

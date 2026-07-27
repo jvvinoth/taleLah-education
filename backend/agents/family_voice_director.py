@@ -16,7 +16,6 @@ from typing import Optional
 from ..adapters.interfaces import TTSProvider
 from ..core.language_packs import pack_loader
 from ..schemas.story_package import (
-    FamilyVoiceConfig,
     NarrationSegment,
     StoryPackage,
 )

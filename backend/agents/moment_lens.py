@@ -40,11 +40,6 @@ class MomentLensAgent(BaseAgent):
     async def execute(self, package: StoryPackage) -> StoryPackage:
         logger.info(f"[MomentLens] Processing package {package.id}")
 
-        # Determine input type: if there's a photo URL, use vision; otherwise text
-        has_image = False
-        image_url = ""
-        parent_text = ""
-
         # Check if facts already exist (skip if pre-populated by API route)
         if package.moment_facts:
             logger.info("[MomentLens] Facts already populated, skipping")

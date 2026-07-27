@@ -62,7 +62,7 @@ class LanguageGuardianAgent(BaseAgent):
         """Translate all child-facing text using Qwen-Max, guided by the pack rules."""
         language = pack.guardian.spoken_language
         if not self.llm:
-            logger.info(f"[LanguageGuardian] No LLM provider, using pack placeholder translations")
+            logger.info("[LanguageGuardian] No LLM provider, using pack placeholder translations")
             self._apply_placeholder_translations(package, pack)
             return
 
