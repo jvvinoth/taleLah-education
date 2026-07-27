@@ -60,7 +60,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24  # 24 hours
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8080"]
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "https://jvvinoth.github.io",  # Flutter web on GitHub Pages
+    ]
 
     # URLs
     backend_url: str = "http://localhost:8000"

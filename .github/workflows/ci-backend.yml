@@ -55,9 +55,9 @@ jobs:
         env:
           DASHSCOPE_API_KEY: test-key
         run: |
-          cd talelah
-          timeout 10 python -m uvicorn backend.main:app --host 127.0.0.1 --port 9999 &
+          python -m uvicorn backend.main:app --host 127.0.0.1 --port 9999 &
           sleep 5
           curl -sf http://127.0.0.1:9999/ || exit 1
           curl -sf http://127.0.0.1:9999/api/v1/health || exit 1
-          echo "✅ Backend health check passed"
+          curl -sf http://127.0.0.1:9999/api/v1/packs || exit 1
+          echo "✅ Backend health + packs check passed"
