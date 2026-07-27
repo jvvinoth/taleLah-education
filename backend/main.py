@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes.v1 import router as v1_router
 from .core.config import settings
+from .core.language_packs import pack_loader
 from .core.orchestrator import AgentName, orchestrator
 
 # Configure logging
@@ -50,6 +51,9 @@ async def startup():
     """Initialize providers and register all agents with the orchestrator."""
     logger.info("🐦 TaleLah starting up...")
 
+    # ── Load language packs (F1 — all locale behaviour lives in packs/) ────
+    pack_loader.load_all()
+
     # ── Initialize providers ──────────────────────────────────────────────
     from .adapters.dashscope_provider import DashScopeLLMProvider, DashScopeVisionProvider
     from .adapters.sarvam_provider import SarvamTTSProvider, SarvamASRProvider
@@ -77,21 +81,20 @@ async def startup():
         )
         logger.info(f"✅ DashScope Vision initialized (model: {settings.qwen_vl_model})")
 
-    # TTS providers (language-dependent)
-    tts_tamil: Optional[SarvamTTSProvider] = None
-    tts_malay: Optional[GoogleTTSProvider] = None
+    # ── TTS provider registry — packs resolve providers by name (AC-08) ────
+    tts_registry: dict[str, object] = {}
 
     if settings.sarvam_api_key:
-        tts_tamil = SarvamTTSProvider(api_key=settings.sarvam_api_key)
-        logger.info("✅ Sarvam TTS initialized (Tamil)")
+        tts_registry["sarvam"] = SarvamTTSProvider(api_key=settings.sarvam_api_key)
+        logger.info("✅ Sarvam TTS initialized")
 
     if settings.google_application_credentials:
         try:
-            tts_malay = GoogleTTSProvider(
+            tts_registry["google"] = GoogleTTSProvider(
                 credentials_path=settings.google_application_credentials,
                 project_id=settings.google_cloud_project,
             )
-            logger.info("✅ Google TTS initialized (Malay)")
+            logger.info("✅ Google TTS initialized")
         except Exception as e:
             logger.warning(f"⚠️  Google TTS init failed: {e}")
 
@@ -108,17 +111,17 @@ async def startup():
     orchestrator.register_agent(AgentName.STORY_WEAVER, StoryWeaverAgent(llm=llm))
     orchestrator.register_agent(AgentName.LANGUAGE_GUARDIAN, LanguageGuardianAgent(llm=llm))
 
-    # Family Voice Director uses TTS (default to Tamil for now; resolved per-locale at runtime)
-    active_tts = tts_tamil or tts_malay
+    # Family Voice Director resolves its TTS provider per-locale from the active pack
+    fallback_tts = next(iter(tts_registry.values()), None)
     orchestrator.register_agent(
         AgentName.FAMILY_VOICE_DIRECTOR,
-        FamilyVoiceDirectorAgent(llm=llm, tts=active_tts),
+        FamilyVoiceDirectorAgent(llm=llm, tts=fallback_tts, tts_registry=tts_registry),
     )
 
     orchestrator.register_agent(AgentName.GROWTH_COACH, GrowthCoachAgent(llm=llm))
 
     logger.info("✅ All 6 agents registered with real providers")
-    logger.info(f"📁 Language packs: ta-SG, zh-SG, ms-SG")
+    logger.info(f"📁 Language packs: {', '.join(pack_loader.available_locales())}")
     logger.info(f"🔗 API docs: http://localhost:{settings.port}/docs")
 
 

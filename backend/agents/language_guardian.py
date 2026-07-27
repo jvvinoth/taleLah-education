@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 
+from ..core.language_packs import LanguagePack, pack_loader
 from ..schemas.story_package import StoryPackage, ValidationStatus
 from .base import BaseAgent
 
@@ -23,9 +24,9 @@ Translate English text into natural spoken {language} (Singapore style, not lite
 
 Rules:
 - Use everyday spoken register, not formal/written style.
-- Keep it natural for a Singapore {language}-speaking family.
+- {register_notes}
+- {cultural_notes}
 - Include romanisation/transliteration for pronunciation support.
-- If the English text has cultural references, keep Singapore-context ones (HDB, MRT, hawker centre).
 
 Respond with JSON:
 {{"translated": "text in target script", "romanised": "pronunciation guide", "english_gloss": "brief English meaning"}}
@@ -40,16 +41,15 @@ class LanguageGuardianAgent(BaseAgent):
     async def execute(self, package: StoryPackage) -> StoryPackage:
         logger.info(f"[LanguageGuardian] Validating package {package.id} for {package.language.locale}")
 
-        locale = package.language.locale
-
-        if locale == "ta-SG":
-            await self._translate_and_validate(package, "Tamil", "ta-SG")
-        elif locale == "zh-SG":
-            await self._translate_and_validate(package, "Mandarin Chinese", "zh-SG")
-        elif locale == "ms-SG":
-            await self._translate_and_validate(package, "Malay", "ms-SG")
+        # All locale behaviour comes from the versioned pack — no locale literals here (AC-08)
+        pack = pack_loader.get(package.language.locale)
+        if pack:
+            package.language.pack_version = pack.pack_version
+            await self._translate_and_validate(package, pack)
         else:
-            logger.warning(f"[LanguageGuardian] Unknown locale {locale}, skipping translation")
+            logger.warning(
+                f"[LanguageGuardian] No pack for locale {package.language.locale}, skipping translation"
+            )
 
         package.validation.language = ValidationStatus.PASSED
         self._set_model_version(package, "language_guardian", "qwen-max" if self.llm else "fallback")
@@ -58,14 +58,19 @@ class LanguageGuardianAgent(BaseAgent):
         logger.info(f"[LanguageGuardian] Validation: {package.validation.language.value}")
         return package
 
-    async def _translate_and_validate(self, package: StoryPackage, language: str, locale: str) -> None:
-        """Translate all child-facing text using Qwen-Max."""
+    async def _translate_and_validate(self, package: StoryPackage, pack: LanguagePack) -> None:
+        """Translate all child-facing text using Qwen-Max, guided by the pack rules."""
+        language = pack.guardian.spoken_language
         if not self.llm:
-            logger.info(f"[LanguageGuardian] No LLM provider, using placeholder translations")
-            self._apply_placeholder_translations(package, language)
+            logger.info(f"[LanguageGuardian] No LLM provider, using pack placeholder translations")
+            self._apply_placeholder_translations(package, pack)
             return
 
-        system = TRANSLATE_SYSTEM_PROMPT.format(language=language)
+        system = TRANSLATE_SYSTEM_PROMPT.format(
+            language=language,
+            register_notes=pack.guardian.register_notes,
+            cultural_notes=pack.guardian.cultural_notes,
+        )
 
         # Translate story title
         if package.story.title:
@@ -127,17 +132,17 @@ class LanguageGuardianAgent(BaseAgent):
 
         logger.info(f"[LanguageGuardian] {language} translation complete for all scenes")
 
-    def _apply_placeholder_translations(self, package: StoryPackage, language: str) -> None:
-        """Fallback placeholder translations when no LLM is available."""
-        # Known Tamil phrases
-        tamil_phrases = {
-            "What colour is this?": "இது என்ன நிறம்?",
-            "You said it well!": "நல்லா சொன்னே!",
-            "What comes next?": "அடுத்து எது வரும்?",
-        }
+    def _apply_placeholder_translations(self, package: StoryPackage, pack: LanguagePack) -> None:
+        """Fallback placeholder translations sourced from the pack when no LLM is available."""
+        language = pack.guardian.spoken_language
+        known_phrases = pack.placeholder_phrases
 
         for scene in package.story.scenes:
             if scene.narration and not scene.narration_target_lang:
-                scene.narration_target_lang = f"[{language}: {scene.narration[:50]}]"
+                scene.narration_target_lang = known_phrases.get(
+                    scene.narration, f"[{language}: {scene.narration[:50]}]"
+                )
 
-        package.story.title_target_lang = f"[{language}: {package.story.title}]"
+        package.story.title_target_lang = known_phrases.get(
+            package.story.title, f"[{language}: {package.story.title}]"
+        )

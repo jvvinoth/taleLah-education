@@ -2,13 +2,16 @@
 Provider adapter interfaces — AGENTS.md rule: "Adapter interfaces:
 LLMProvider, VisionProvider, ASRProvider, TTSProvider.
 Language pack declares which concrete provider to use."
+
+Language packs themselves live in `backend/packs/*.json` and are loaded by
+`core.language_packs.pack_loader` (F1 / AC-08) — never hardcode locale
+behaviour in this module.
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 
 
 class ProviderType(str, Enum):
@@ -161,71 +164,5 @@ class IntentMatcher:
 
 # ── Language Pack Config ──────────────────────────────────────────────────
 
-@dataclass
-class LanguagePackConfig:
-    """
-    Runtime config resolved from a language pack spec file.
-    The active pack declares which providers to use.
-    """
-    locale: str
-    script: str
-    pack_version: str = "1.0.0"
-
-    # Provider selections
-    llm_provider: ProviderType = ProviderType.QWEN
-    vision_provider: ProviderType = ProviderType.QWEN
-    asr_provider: ProviderType = ProviderType.SARVAM
-    tts_provider: ProviderType = ProviderType.SARVAM
-
-    # Language-specific settings
-    asr_language: str = "ta-IN"
-    tts_language: str = "ta"
-    tts_voice_id: str = ""
-
-    # Expected intent vocabulary (extended per story)
-    expected_intents: dict[str, list[str]] = field(default_factory=dict)
-
-    # Cultural safeguards
-    register_notes: str = ""
-    cultural_notes: str = ""
-
-
-# Default packs
-TA_SG_CONFIG = LanguagePackConfig(
-    locale="ta-SG",
-    script="Tamil",
-    asr_provider=ProviderType.SARVAM,
-    tts_provider=ProviderType.SARVAM,
-    asr_language="ta-IN",
-    tts_language="ta",
-    expected_intents={
-        "names_a_color": ["சிவப்பு", "நீலம்", "பச்சை", "மஞ்சள்", "red", "blue", "green", "yellow"],
-        "counts": ["ஒன்று", "இரண்டு", "மூன்று", "one", "two", "three"],
-        "predicts_next": ["அடுத்து", "பிறகு", "next", "after"],
-        "polite_request": ["தயவு செய்து", "கொடு", "please", "give"],
-    },
-)
-
-ZH_SG_CONFIG = LanguagePackConfig(
-    locale="zh-SG",
-    script="Simplified Chinese",
-    asr_provider=ProviderType.COSYVOICE,
-    tts_provider=ProviderType.COSYVOICE,
-    asr_language="zh",
-    tts_language="zh",
-)
-
-MS_SG_CONFIG = LanguagePackConfig(
-    locale="ms-SG",
-    script="Rumi",
-    asr_provider=ProviderType.GOOGLE,
-    tts_provider=ProviderType.GOOGLE,
-    asr_language="ms-MY",
-    tts_language="ms-MY",
-)
-
-PACK_REGISTRY: dict[str, LanguagePackConfig] = {
-    "ta-SG": TA_SG_CONFIG,
-    "zh-SG": ZH_SG_CONFIG,
-    "ms-SG": MS_SG_CONFIG,
-}
+# Language packs live in backend/packs/*.json, loaded by core.language_packs
+# (F1 / AC-08). The old hardcoded LanguagePackConfig registry was removed.

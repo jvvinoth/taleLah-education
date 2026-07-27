@@ -153,13 +153,19 @@ class WorkflowOrchestrator:
         locale: str = "ta-SG",
     ) -> StoryPackage:
         """Create a new Story Package in CAPTURED state."""
+        from .language_packs import pack_loader
+
+        pack = pack_loader.get(locale)
         pkg_id = f"story_{uuid.uuid4().hex[:12]}"
         pkg = StoryPackage(
             id=pkg_id,
             status=StoryStatus.CAPTURED,
             child_profile_id=child_profile_id,
             moment_id=moment_id,
-            language={"locale": locale, "pack_version": "1.0.0"},
+            language={
+                "locale": locale,
+                "pack_version": pack.pack_version if pack else "unknown",
+            },
         )
         self._packages[pkg_id] = pkg
         self._traces[pkg_id] = [

@@ -8,6 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
+from ...core.language_packs import pack_loader
 from ...core.orchestrator import orchestrator
 from ...safety.gate import safety_gate
 from ...schemas.api_schemas import (
@@ -317,7 +318,26 @@ async def complete_session(session_id: str):
     )
 
 
-# ── Language Pack Swap (Qoder reusability proof) ─────────────────────────
+# ── Language Pack Swap (AC-08 reusability proof) ───────────────────────
+
+@router.get("/packs")
+async def list_packs():
+    """List the loaded language packs — all locale behaviour lives here."""
+    return {
+        "packs": [
+            {
+                "locale": p.locale,
+                "pack_version": p.pack_version,
+                "language_name": p.language_name,
+                "script": p.script,
+                "tts_provider": p.providers.tts.provider,
+                "asr_provider": p.providers.asr.provider,
+            }
+            for locale in pack_loader.available_locales()
+            if (p := pack_loader.get(locale))
+        ]
+    }
+
 
 @router.post("/packages/{package_id}/swap-language")
 async def swap_language(package_id: str, new_locale: str = "ms-SG"):
@@ -329,18 +349,37 @@ async def swap_language(package_id: str, new_locale: str = "ms-SG"):
     if not pkg:
         raise HTTPException(404, "Package not found")
 
+    new_pack = pack_loader.get(new_locale)
+    if not new_pack:
+        raise HTTPException(
+            400,
+            f"No language pack for '{new_locale}'. Available: {pack_loader.available_locales()}",
+        )
+
     old_locale = pkg.language.locale
     pkg.language.locale = new_locale
+    pkg.language.pack_version = new_pack.pack_version
 
-    # Re-run Language Guardian with new pack
-    from ...agents.language_guardian import LanguageGuardianAgent
-    guardian = LanguageGuardianAgent()
+    # Clear previous translations so the Guardian re-translates with the new pack
+    pkg.story.title_target_lang = ""
+    for scene in pkg.story.scenes:
+        scene.narration_target_lang = ""
+    pkg.story.room_mission.instruction_target_lang = ""
+    pkg.story.family_handoff.prompt_target_lang = ""
+
+    # Re-run the registered Language Guardian (keeps its LLM provider) with new pack
+    from ...core.orchestrator import AgentName
+    guardian = orchestrator._agents.get(AgentName.LANGUAGE_GUARDIAN)
+    if guardian is None:
+        from ...agents.language_guardian import LanguageGuardianAgent
+        guardian = LanguageGuardianAgent()
     pkg = await guardian.execute(pkg)
 
     return {
         "package_id": package_id,
         "old_locale": old_locale,
         "new_locale": new_locale,
+        "pack_version": new_pack.pack_version,
         "validation": pkg.validation.language.value,
         "message": "Language pack swapped — no application code changed",
     }
@@ -356,5 +395,5 @@ async def health():
         "version": "0.1.0",
         "agents": ["moment_lens", "learning_planner", "story_weaver",
                    "language_guardian", "family_voice_director", "growth_coach"],
-        "language_packs": ["ta-SG", "zh-SG", "ms-SG"],
+        "language_packs": pack_loader.available_locales(),
     }

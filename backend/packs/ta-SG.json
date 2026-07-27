@@ -1,0 +1,47 @@
+{
+  "pack_version": "1.1.0",
+  "locale": "ta-SG",
+  "language_name": "Tamil",
+  "script": "Tamil",
+  "providers": {
+    "llm": "qwen",
+    "vision": "qwen",
+    "asr": { "provider": "sarvam", "language": "ta-IN" },
+    "tts": { "provider": "sarvam", "language": "ta-IN", "voice_id": "anushka" }
+  },
+  "guardian": {
+    "spoken_language": "Tamil",
+    "register_notes": "Everyday spoken Singapore Tamil, not literary/formal (sentamil). Short sentences a 4-8 year old hears at home.",
+    "cultural_notes": "Keep Singapore context: HDB, MRT, hawker centre, void deck. Avoid India-specific references unless the family uses them."
+  },
+  "word_bank": [
+    { "word": "சிவப்பு", "romanised": "sivappu", "english": "red" },
+    { "word": "நீலம்", "romanised": "neelam", "english": "blue" },
+    { "word": "பச்சை", "romanised": "pachai", "english": "green" },
+    { "word": "மஞ்சள்", "romanised": "manjal", "english": "yellow" },
+    { "word": "ரயில்", "romanised": "rayil", "english": "train" },
+    { "word": "அடுத்து", "romanised": "aduthu", "english": "next" },
+    { "word": "நிலையம்", "romanised": "nilaiyam", "english": "station" }
+  ],
+  "expected_intents": {
+    "names_a_color": ["சிவப்பு", "நீலம்", "பச்சை", "மஞ்சள்", "sivappu", "neelam", "pachai", "manjal", "red", "blue", "green", "yellow"],
+    "counts": ["ஒன்று", "இரண்டு", "மூன்று", "ondru", "irandu", "moondru", "one", "two", "three"],
+    "predicts_next": ["அடுத்து", "பிறகு", "aduthu", "piragu", "next", "after"],
+    "polite_request": ["தயவு செய்து", "கொடு", "thayavu seidhu", "kodu", "please", "give"]
+  },
+  "speech": {
+    "keyword_floor": 0.7,
+    "max_attempts": 2,
+    "normalization": "NFC"
+  },
+  "child_copy": {
+    "celebration": ["நல்லா சொன்னே! 🎉", "அருமை!", "சூப்பர்!"],
+    "encourage_retry": ["இன்னொரு முறை கேட்கலாமா?", "மெதுவா சொல்லலாம்!"],
+    "listen_prompt": "மினாவுக்கு சொல்லு!"
+  },
+  "placeholder_phrases": {
+    "What colour is this?": "இது என்ன நிறம்?",
+    "You said it well!": "நல்லா சொன்னே!",
+    "What comes next?": "அடுத்து எது வரும்?"
+  }
+}
