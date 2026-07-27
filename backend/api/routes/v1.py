@@ -1,10 +1,12 @@
 """API routes — profiles, moments, story packages, sessions."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 
 from ...core.orchestrator import orchestrator
 from ...safety.gate import safety_gate
@@ -180,6 +182,62 @@ async def generate_package(moment_id: str, locale: str = "ta-SG"):
         pass
 
     return StoryPackageResponse.from_package(pkg)
+
+
+@router.post("/packages/generate-async")
+async def generate_package_async(
+    moment_id: str,
+    locale: str = "ta-SG",
+    background_tasks: BackgroundTasks = None,
+):
+    """
+    Start story generation in the background.
+    Returns package_id immediately; subscribe to /packages/{id}/stream for SSE events.
+    """
+    moment = _moments.get(moment_id)
+    if not moment:
+        raise HTTPException(404, "Moment not found")
+
+    pkg = orchestrator.create_package(
+        child_profile_id=moment.child_profile_id,
+        moment_id=moment_id,
+        locale=locale,
+    )
+
+    from ...schemas.story_package import MomentFact
+    pkg.moment_facts = [MomentFact(text=moment.parent_text, confidence=0.9)]
+
+    async def _run():
+        try:
+            await orchestrator.run_generation(pkg.id)
+            safety_gate.validate_package(pkg)
+        except Exception as e:
+            await orchestrator._emit(pkg.id, {"type": "error", "error": str(e)})
+
+    asyncio.create_task(_run())
+
+    return {
+        "package_id": pkg.id,
+        "stream_url": f"/api/v1/packages/{pkg.id}/stream",
+        "status": "generating",
+    }
+
+
+@router.get("/packages/{package_id}/stream")
+async def stream_package_events(package_id: str):
+    """SSE stream of real-time generation progress events for a package."""
+    pkg = orchestrator.get_package(package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    return StreamingResponse(
+        orchestrator.stream_events(package_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/packages/{package_id}", response_model=StoryPackageDetail)

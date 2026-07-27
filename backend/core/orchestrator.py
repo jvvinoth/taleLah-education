@@ -9,11 +9,13 @@ States: captured → interpreting → planning → writing → validating →
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from ..schemas.story_package import (
     StoryPackage,
@@ -85,6 +87,59 @@ class WorkflowOrchestrator:
         self._packages: dict[str, StoryPackage] = {}
         self._traces: dict[str, list[TraceEntry]] = {}
         self._agents: dict[AgentName, Any] = {}
+        # SSE event bus: package_id → list of subscriber queues
+        self._subscribers: dict[str, list[asyncio.Queue]] = {}
+        # Buffered events (replayed to late subscribers)
+        self._event_buffers: dict[str, list[dict]] = {}
+        self._done_packages: set[str] = set()
+
+    def subscribe(self, package_id: str) -> asyncio.Queue:
+        """Subscribe to SSE events for a package. Returns an asyncio.Queue."""
+        q: asyncio.Queue = asyncio.Queue()
+        # Replay buffered events first
+        for ev in self._event_buffers.get(package_id, []):
+            q.put_nowait(ev)
+        self._subscribers.setdefault(package_id, []).append(q)
+        return q
+
+    def unsubscribe(self, package_id: str, q: asyncio.Queue) -> None:
+        """Remove a subscriber queue."""
+        subs = self._subscribers.get(package_id, [])
+        if q in subs:
+            subs.remove(q)
+
+    async def _emit(self, package_id: str, event: dict) -> None:
+        """Push an SSE event to all subscribers of a package (buffered)."""
+        self._event_buffers.setdefault(package_id, []).append(event)
+        subs = self._subscribers.get(package_id, [])
+        for q in subs:
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                pass  # drop if subscriber is slow
+        if event.get("type") in ("generation_complete", "error"):
+            self._done_packages.add(package_id)
+
+    async def stream_events(self, package_id: str) -> AsyncGenerator[str, None]:
+        """Async generator yielding SSE-formatted strings for a package."""
+        # If already done before subscribe, replay and exit
+        if package_id in self._done_packages:
+            for ev in self._event_buffers.get(package_id, []):
+                yield f"data: {json.dumps(ev)}\n\n"
+            return
+        q = self.subscribe(package_id)
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=60.0)
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("type") in ("generation_complete", "error", "session_complete"):
+                    break
+        finally:
+            self.unsubscribe(package_id, q)
 
     def register_agent(self, name: AgentName, agent: Any) -> None:
         """Register an agent implementation."""
@@ -151,14 +206,22 @@ class WorkflowOrchestrator:
             AgentName.FAMILY_VOICE_DIRECTOR: StoryStatus.AWAITING_PARENT,
         }
 
-        for agent_name in PRE_SESSION_AGENTS:
+        total = len(PRE_SESSION_AGENTS)
+        for idx, agent_name in enumerate(PRE_SESSION_AGENTS):
             target_status = agent_status_map[agent_name]
+            progress = round((idx / total) * 100, 1)
 
             # Transition to agent's working status
             self._transition(pkg, target_status)
             self._traces[pkg.id].append(
                 TraceEntry(agent_name.value, "started", f"Running {agent_name.value}")
             )
+            await self._emit(package_id, {
+                "type": "agent_started",
+                "agent": agent_name.value,
+                "progress_pct": progress,
+                "status": target_status.value,
+            })
 
             try:
                 agent = self._agents.get(agent_name)
@@ -170,18 +233,30 @@ class WorkflowOrchestrator:
                 self._traces[pkg.id].append(
                     TraceEntry(agent_name.value, "completed", f"{agent_name.value} done")
                 )
+                await self._emit(package_id, {
+                    "type": "agent_completed",
+                    "agent": agent_name.value,
+                    "progress_pct": round(((idx + 1) / total) * 100, 1),
+                })
             except Exception as e:
                 self._traces[pkg.id].append(
                     TraceEntry(agent_name.value, "failed", str(e))
                 )
+                await self._emit(package_id, {
+                    "type": "error",
+                    "agent": agent_name.value,
+                    "error": str(e),
+                })
                 logger.error(f"Agent {agent_name.value} failed: {e}")
                 raise
 
         # After all agents, check validation
         if pkg.validation.language == ValidationStatus.BLOCKED:
+            await self._emit(package_id, {"type": "error", "error": "Language validation blocked"})
             raise ValueError("Language validation blocked — cannot proceed to parent")
 
         if pkg.validation.safety == ValidationStatus.BLOCKED:
+            await self._emit(package_id, {"type": "error", "error": "Safety validation blocked"})
             raise ValueError("Safety validation blocked — cannot proceed to parent")
 
         # Set status to awaiting parent if all passed
@@ -191,6 +266,12 @@ class WorkflowOrchestrator:
         self._traces[pkg.id].append(
             TraceEntry("orchestrator", "generation_complete", "Ready for parent review")
         )
+        await self._emit(package_id, {
+            "type": "generation_complete",
+            "package_id": package_id,
+            "progress_pct": 100.0,
+            "status": StoryStatus.AWAITING_PARENT.value,
+        })
         return pkg
 
     async def approve_package(self, package_id: str) -> StoryPackage:
