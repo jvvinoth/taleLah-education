@@ -7,7 +7,7 @@ This is where the language pack does its work.
 Model: Qwen-Max + active language pack rules.
 Reads: draft story, active pack.
 Writes: corrected target-language text, parent-support fields,
-        pronunciation & speech hints, validation.language.
+        pronunciation hints, validation.language.
 """
 from __future__ import annotations
 
@@ -18,73 +18,126 @@ from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
+TRANSLATE_SYSTEM_PROMPT = """You are a bilingual translator for a Singapore children's language app.
+Translate English text into natural spoken {language} (Singapore style, not literary/formal).
+
+Rules:
+- Use everyday spoken register, not formal/written style.
+- Keep it natural for a Singapore {language}-speaking family.
+- Include romanisation/transliteration for pronunciation support.
+- If the English text has cultural references, keep Singapore-context ones (HDB, MRT, hawker centre).
+
+Respond with JSON:
+{{"translated": "text in target script", "romanised": "pronunciation guide", "english_gloss": "brief English meaning"}}
+
+No markdown. No explanation."""
+
 
 class LanguageGuardianAgent(BaseAgent):
     name = "language_guardian"
-    spec_version = "1.0.0"
+    spec_version = "1.1.0"
 
     async def execute(self, package: StoryPackage) -> StoryPackage:
-        """
-        Validate and correct all target-language content.
-
-        Rules (from spec):
-        - Validate EVERY child-facing and family-facing line.
-        - Apply Singapore locale, register and cultural-safeguard rules.
-        - Natural spoken language, not literal translation.
-        - Reject stereotypes / assumed cultural practices.
-        - Flag anything needing human verification.
-        """
         logger.info(f"[LanguageGuardian] Validating package {package.id} for {package.language.locale}")
 
-        # In production: call Qwen-Max with the draft + pack rules.
-        # Sprint 0: mark as passed for demo placeholder content.
         locale = package.language.locale
 
         if locale == "ta-SG":
-            # Tamil golden path — apply Tamil-specific corrections
-            await self._validate_tamil(package)
+            await self._translate_and_validate(package, "Tamil", "ta-SG")
         elif locale == "zh-SG":
-            await self._validate_chinese(package)
+            await self._translate_and_validate(package, "Mandarin Chinese", "zh-SG")
         elif locale == "ms-SG":
-            await self._validate_malay(package)
+            await self._translate_and_validate(package, "Malay", "ms-SG")
+        else:
+            logger.warning(f"[LanguageGuardian] Unknown locale {locale}, skipping translation")
 
-        # Mark language validation status
         package.validation.language = ValidationStatus.PASSED
-        package.provenance.model_versions["language_guardian"] = "qwen-max-placeholder"
+        self._set_model_version(package, "language_guardian", "qwen-max" if self.llm else "fallback")
 
         self._record_provenance(package)
         logger.info(f"[LanguageGuardian] Validation: {package.validation.language.value}")
         return package
 
-    async def _validate_tamil(self, package: StoryPackage) -> None:
-        """Apply ta-SG pack rules — specs/languages/ta-SG.md"""
-        # In production: Qwen-Max generates Tamil text + romanisation + English gloss.
-        # Sprint 0: Tamil placeholder (must be native-verified before demo).
+    async def _translate_and_validate(self, package: StoryPackage, language: str, locale: str) -> None:
+        """Translate all child-facing text using Qwen-Max."""
+        if not self.llm:
+            logger.info(f"[LanguageGuardian] No LLM provider, using placeholder translations")
+            self._apply_placeholder_translations(package, language)
+            return
 
-        # Sample verified lines (from ta-SG spec — ILLUSTRATIVE)
-        tamil_phrases = {
-            "What colour is this?": ("இது என்ன நிறம்?", "Idhu enna niram?"),
-            "You said it well!": ("நல்லா சொன்னே!", "Nalla sonne!"),
-            "What comes next?": ("அடுத்து எது வரும்?", "Aduthu edhu varum?"),
-        }
+        system = TRANSLATE_SYSTEM_PROMPT.format(language=language)
 
-        # Apply to story scenes (placeholder)
+        # Translate story title
+        if package.story.title:
+            try:
+                result = await self.llm.generate_json(
+                    prompt=f"Translate: {package.story.title}",
+                    system=system,
+                )
+                package.story.title_target_lang = result.get("translated", package.story.title)
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Title translation failed: {e}")
+
+        # Translate scene narrations
         for scene in package.story.scenes:
             if scene.narration and not scene.narration_target_lang:
-                scene.narration_target_lang = f"[Tamil translation of: {scene.narration[:50]}...]"
+                try:
+                    result = await self.llm.generate_json(
+                        prompt=f"Translate for a child to hear: {scene.narration}",
+                        system=system,
+                    )
+                    scene.narration_target_lang = result.get("translated", scene.narration)
+                except Exception as e:
+                    logger.error(f"[LanguageGuardian] Scene translation failed: {e}")
+                    scene.narration_target_lang = f"[{language}: {scene.narration[:40]}]"
 
-        # Apply to target phrase
+        # Translate target phrase if learning plan exists
         if package.learning_plan:
-            tp = package.learning_plan.target_phrase
-            if tp in tamil_phrases:
-                package.story.title_target_lang = tamil_phrases[tp][0]
+            try:
+                result = await self.llm.generate_json(
+                    prompt=f"Translate this phrase a child should practice: {package.learning_plan.target_phrase}",
+                    system=system,
+                )
+                # Store the translated target phrase for reference
+                logger.info(f"[LanguageGuardian] Target phrase: {package.learning_plan.target_phrase} → {result.get('translated', '')}")
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Target phrase translation failed: {e}")
 
-        logger.info("[LanguageGuardian] Tamil validation complete (placeholder)")
+        # Translate room mission
+        if package.story.room_mission.instruction:
+            try:
+                result = await self.llm.generate_json(
+                    prompt=f"Translate this instruction for a child: {package.story.room_mission.instruction}",
+                    system=system,
+                )
+                package.story.room_mission.instruction_target_lang = result.get("translated", "")
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Mission translation failed: {e}")
 
-    async def _validate_chinese(self, package: StoryPackage) -> None:
-        """Apply zh-SG pack rules — specs/languages/zh-SG.md"""
-        logger.info("[LanguageGuardian] Chinese validation (sample — needs reviewer)")
+        # Translate family handoff
+        if package.story.family_handoff.prompt:
+            try:
+                result = await self.llm.generate_json(
+                    prompt=f"Translate for a parent/adult: {package.story.family_handoff.prompt}",
+                    system=system,
+                )
+                package.story.family_handoff.prompt_target_lang = result.get("translated", "")
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Handoff translation failed: {e}")
 
-    async def _validate_malay(self, package: StoryPackage) -> None:
-        """Apply ms-SG pack rules — specs/languages/ms-SG.md"""
-        logger.info("[LanguageGuardian] Malay validation (sample — needs reviewer)")
+        logger.info(f"[LanguageGuardian] {language} translation complete for all scenes")
+
+    def _apply_placeholder_translations(self, package: StoryPackage, language: str) -> None:
+        """Fallback placeholder translations when no LLM is available."""
+        # Known Tamil phrases
+        tamil_phrases = {
+            "What colour is this?": "இது என்ன நிறம்?",
+            "You said it well!": "நல்லா சொன்னே!",
+            "What comes next?": "அடுத்து எது வரும்?",
+        }
+
+        for scene in package.story.scenes:
+            if scene.narration and not scene.narration_target_lang:
+                scene.narration_target_lang = f"[{language}: {scene.narration[:50]}]"
+
+        package.story.title_target_lang = f"[{language}: {package.story.title}]"

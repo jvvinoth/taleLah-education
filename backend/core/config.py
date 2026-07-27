@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Alibaba Cloud — Qwen (LLM + Vision)
     dashscope_api_key: str = ""
+    dashscope_base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     qwen_model: str = "qwen-max"
     qwen_vl_model: str = "qwen-vl-max"
 
@@ -35,7 +36,15 @@ class Settings(BaseSettings):
     sarvam_api_key: str = ""
 
     # Google Cloud — Malay speech
-    google_credentials_json: str = ""
+    google_application_credentials: str = "./google-credentials.json"
+    google_cloud_project: str = ""
+
+    # Cloudflare R2 — object storage
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = "tale-lah"
+    r2_endpoint: str = ""
 
     # ElevenLabs — P1 voice clone
     elevenlabs_api_key: str = ""
@@ -53,7 +62,11 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8080"]
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # URLs
+    backend_url: str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3000"
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

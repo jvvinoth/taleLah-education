@@ -18,25 +18,50 @@ from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
+COACH_SYSTEM_PROMPT = """You are a gentle, non-judgmental growth coach for a children's language app.
+Analyse the session and suggest the next activity moment.
+
+Rules:
+- Do NOT label proficiency or score the child.
+- Do NOT infer emotion or ability.
+- Do NOT retain raw audio.
+- Adapt gradually and reversibly.
+- Suggest one concrete next moment the parent can capture.
+
+Respond with JSON:
+{"next_moment_suggestion": "Brief suggestion for next activity to capture", "encouragement": "Brief positive note for the parent"}
+
+No markdown. No explanation."""
+
 
 class GrowthCoachAgent(BaseAgent):
     name = "growth_coach"
-    spec_version = "1.0.0"
+    spec_version = "1.1.0"
 
     async def execute(self, package: StoryPackage) -> StoryPackage:
-        """
-        Produce session summary and next-moment suggestion.
-
-        Rules (from spec):
-        - Operate ONLY within approved response intents.
-        - Do NOT label proficiency. Do NOT score. Do NOT infer emotion.
-        - Do NOT retain raw audio unless parent explicitly saves.
-        - Adapt gradually and reversibly.
-        """
         logger.info(f"[GrowthCoach] Summarising session for package {package.id}")
 
-        # In production: analyze session events, suggest next moment.
-        # Sprint 0: placeholder summary.
+        if self.llm:
+            try:
+                target_phrase = ""
+                if package.learning_plan:
+                    target_phrase = package.learning_plan.target_phrase
+
+                result = await self.llm.generate_json(
+                    prompt=(
+                        f"Session completed. Target phrase practiced: '{target_phrase}'. "
+                        f"Story: '{package.story.title}'. "
+                        "Suggest the next moment for the parent to capture."
+                    ),
+                    system=COACH_SYSTEM_PROMPT,
+                )
+                self._set_model_version(package, "growth_coach", "qwen-max")
+                logger.info(f"[GrowthCoach] Next suggestion: {result.get('next_moment_suggestion', '')}")
+            except Exception as e:
+                logger.error(f"[GrowthCoach] Qwen call failed: {e}")
+                self._set_model_version(package, "growth_coach", "fallback")
+        else:
+            self._set_model_version(package, "growth_coach", "fallback")
 
         self._record_provenance(package)
         return package

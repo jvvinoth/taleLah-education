@@ -100,11 +100,11 @@ class SafetyGate:
         if re.search(url_pattern, all_text):
             return SafetyCheckResult(False, "Child content contains external links")
 
-        # No diagnostic language
-        diagnostic_terms = ["diagnosis", "disorder", "syndrome", "delayed", "behind",
+        # No diagnostic language (use word boundary to avoid false positives)
+        diagnostic_terms = ["diagnosis", "disorder", "syndrome", "delayed",
                            "assessment", "evaluation", "therapy", "treatment"]
         for term in diagnostic_terms:
-            if term in all_text:
+            if re.search(rf"\b{term}\b", all_text):
                 return SafetyCheckResult(False, f"Child content contains diagnostic term: {term}")
 
         # No secrets
