@@ -33,10 +33,11 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS
+# CORS — explicit local origins + any Railway / GitHub Pages deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=r"https://.*\.up\.railway\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

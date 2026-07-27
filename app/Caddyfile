@@ -1,0 +1,7 @@
+# Serves the Flutter web bundle on Railway ($PORT injected at runtime).
+:{$PORT}
+
+root * /srv
+encode gzip
+try_files {path} /index.html
+file_server

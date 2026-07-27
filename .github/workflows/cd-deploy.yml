@@ -1,9 +1,13 @@
 name: CD — Deploy TaleLah
 
-# Deploys every service on each push to main, so every completed
-# sprint is instantly testable on live URLs:
-#   backend  → Render        (https://talelah-backend.onrender.com)
-#   app      → GitHub Pages  (https://jvvinoth.github.io/taleLah-education/)
+# Deployment target: Railway (both services), so every completed sprint
+# is instantly testable on live URLs.
+#
+# Primary path: Railway's native GitHub integration auto-deploys each
+# service on push to main (backend root = repo root, web root = app/).
+# This workflow is the explicit CI-driven fallback: it runs `railway up`
+# only when the RAILWAY_TOKEN secret is set. If you rely on Railway's
+# auto-deploy, simply leave the secret unset to avoid double deploys.
 
 on:
   push:
@@ -11,69 +15,35 @@ on:
     paths:
       - 'backend/**'
       - 'app/**'
+      - 'Dockerfile'
       - '.github/workflows/cd-deploy.yml'
   workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  deploy-backend:
+  deploy-railway:
     runs-on: ubuntu-latest
     env:
-      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-    steps:
-      - name: Trigger Render deploy
-        if: env.RENDER_DEPLOY_HOOK != ''
-        run: |
-          curl -sf -X POST "$RENDER_DEPLOY_HOOK"
-          echo "✅ Render backend deploy triggered"
-
-      - name: Skip notice
-        if: env.RENDER_DEPLOY_HOOK == ''
-        run: echo "⏭️  RENDER_DEPLOY_HOOK secret not set — backend deploy skipped"
-
-  build-web:
-    runs-on: ubuntu-latest
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.35.1'
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Build Flutter web for GitHub Pages
-        working-directory: app
+      - name: Deploy backend to Railway
+        if: env.RAILWAY_TOKEN != ''
         run: |
-          flutter build web --release \
-            --base-href "/taleLah-education/" \
-            --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'https://talelah-backend.onrender.com/api/v1' }}
+          npm install -g @railway/cli
+          railway up --service talelah-backend --detach
+          echo "✅ Backend deploy triggered on Railway"
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: app/build/web
+      - name: Deploy Flutter web to Railway
+        if: env.RAILWAY_TOKEN != ''
+        run: |
+          railway up --service talelah-web --path-as-root app --detach
+          echo "✅ Web deploy triggered on Railway"
 
-  deploy-web:
-    runs-on: ubuntu-latest
-    needs: build-web
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Skip notice
+        if: env.RAILWAY_TOKEN == ''
+        run: echo "⏭️  RAILWAY_TOKEN not set — assuming Railway native GitHub auto-deploy handles main pushes"

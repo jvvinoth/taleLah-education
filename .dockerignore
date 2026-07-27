@@ -1,0 +1,14 @@
+# Keep Railway/Docker build context lean
+.git
+.github
+.dart_tool
+app/build
+app/.dart_tool
+media
+*.db
+.env
+google-credentials.json
+docs
+specs
+__pycache__
+**/__pycache__
