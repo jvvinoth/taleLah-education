@@ -171,7 +171,7 @@ class _FamilyModeScreenState extends State<FamilyModeScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: TColors.lavender,
+                        color: TColors.mist,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: const Text(
@@ -232,7 +232,7 @@ class _FamilyModeScreenState extends State<FamilyModeScreen> {
                   gradient: TGradients.night,
                   radius: 26,
                   padding: const EdgeInsets.all(24),
-                  shadows: TShadows.glowViolet,
+                  shadows: TShadows.glowTeal,
                   child: Column(
                     children: [
                       const Text('🎉', style: TextStyle(fontSize: 44)),
@@ -335,12 +335,12 @@ class _FamilyModeScreenState extends State<FamilyModeScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.auto_stories_rounded,
-                            color: TColors.violetDeep, size: 20),
+                            color: TColors.tealDeep, size: 20),
                         SizedBox(width: 8),
                         Text(
                           'Back to Story',
                           style: TextStyle(
-                            color: TColors.violetDeep,
+                            color: TColors.tealDeep,
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
                           ),

@@ -1,11 +1,11 @@
 {
-    "name": "talelah",
-    "short_name": "talelah",
+    "name": "TaleLah",
+    "short_name": "TaleLah",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FBF6EC",
+    "theme_color": "#2F9E97",
+    "description": "TaleLah — Everyday moments. Mother-tongue magic.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

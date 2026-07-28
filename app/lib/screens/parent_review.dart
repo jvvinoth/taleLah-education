@@ -203,7 +203,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
               fontSize: 12,
               fontWeight: FontWeight.w800,
               color: _regensLeft > 0
-                  ? const Color(0xFF0F9D8A)
+                  ? const Color(0xFF1F7B75)
                   : TColors.coral,
             ),
           ),
@@ -217,7 +217,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
     return TCard(
       gradient: TGradients.hero,
       radius: 24,
-      shadows: TShadows.glowViolet,
+      shadows: TShadows.glowTeal,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -295,7 +295,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                     const Text('•  ',
                         style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: TColors.violet)),
+                            color: TColors.teal)),
                     Expanded(
                       child: Text(t,
                           style: const TextStyle(
@@ -334,7 +334,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF7F5FC),
+                        color: const Color(0xFFF7F3E9),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: TextField(
@@ -425,7 +425,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: TColors.lavender,
+                          color: TColors.mist,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Row(
@@ -435,11 +435,11 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                                 style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w800,
-                                    color: TColors.violetDeep)),
+                                    color: TColors.tealDeep)),
                             if (_editable) ...[
                               const SizedBox(width: 4),
                               const Icon(Icons.swap_horiz_rounded,
-                                  size: 15, color: TColors.violetDeep),
+                                  size: 15, color: TColors.tealDeep),
                             ],
                           ],
                         ),
@@ -481,7 +481,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                       horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color:
-                        selected ? TColors.ink : const Color(0xFFF2F0F9),
+                        selected ? TColors.ink : const Color(0xFFF0EDE1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -545,7 +545,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: TColors.lavender,
+                            color: TColors.mist,
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Column(
@@ -555,7 +555,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                                   style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w800,
-                                      color: TColors.violetDeep)),
+                                      color: TColors.tealDeep)),
                               Text('${e['romanised'] ?? ''} · $english',
                                   style: const TextStyle(
                                       fontSize: 10,
@@ -634,7 +634,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                         style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: TColors.violetDeep,
+                            color: TColors.tealDeep,
                             height: 1.4)),
                   ],
                 ],
@@ -672,7 +672,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                 style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: TColors.violetDeep,
+                    color: TColors.tealDeep,
                     height: 1.4)),
           ],
         ],
@@ -706,7 +706,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF7F5FC),
+                color: const Color(0xFFF7F3E9),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text('💡 ${handoff['response_suggestion']}',
@@ -749,20 +749,20 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: TColors.lavender,
+                color: TColors.mist,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.edit_rounded,
-                      size: 14, color: TColors.violetDeep),
+                      size: 14, color: TColors.tealDeep),
                   SizedBox(width: 4),
                   Text('Edit',
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
-                          color: TColors.violetDeep)),
+                          color: TColors.tealDeep)),
                 ],
               ),
             ),
@@ -780,7 +780,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: enabled ? TColors.mint : const Color(0xFFF2F0F9),
+          color: enabled ? TColors.mint : const Color(0xFFF0EDE1),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -794,7 +794,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                 : Icon(Icons.refresh_rounded,
                     size: 14,
                     color: enabled
-                        ? const Color(0xFF0F9D8A)
+                        ? const Color(0xFF1F7B75)
                         : TColors.inkFaint),
             const SizedBox(width: 4),
             Text('Redo',
@@ -802,7 +802,7 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                     color: enabled
-                        ? const Color(0xFF0F9D8A)
+                        ? const Color(0xFF1F7B75)
                         : TColors.inkFaint)),
           ],
         ),
@@ -817,9 +817,9 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
         height: 58,
         decoration: BoxDecoration(
           gradient: _busy ? null : TGradients.hero,
-          color: _busy ? const Color(0xFFE8E5F2) : null,
+          color: _busy ? const Color(0xFFE8E4D8) : null,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: _busy ? null : TShadows.glowViolet,
+          boxShadow: _busy ? null : TShadows.glowTeal,
         ),
         child: Center(
           child: Row(

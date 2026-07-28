@@ -29,7 +29,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFFFFE8E0), Color(0xFFFFF0F4), Color(0xFFFDEBFF)],
+        colors: [Color(0xFFFCEBDF), Color(0xFFFBEFE4), Color(0xFFFDF4E9)],
       ),
       accent: TColors.coral,
     ),
@@ -44,9 +44,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFFE3F1FF), Color(0xFFEDEAFF), Color(0xFFF3F9FF)],
+        colors: [Color(0xFFE0F2F0), Color(0xFFEBF7F3), Color(0xFFF2FAF6)],
       ),
-      accent: TColors.violet,
+      accent: TColors.teal,
     ),
     _DemoScene(
       title: 'The Journey',
@@ -58,9 +58,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFFFFF6DC), Color(0xFFFFF0E5), Color(0xFFFFFBEA)],
+        colors: [Color(0xFFFBF0D2), Color(0xFFFBEFDD), Color(0xFFFDF7E4)],
       ),
-      accent: TColors.amber,
+      accent: TColors.gold,
     ),
     _DemoScene(
       title: 'Mission Time!',
@@ -72,7 +72,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFFE0F7F1), Color(0xFFE8FBEF), Color(0xFFEFFFF6)],
+        colors: [Color(0xFFE2F3EA), Color(0xFFE9F7EF), Color(0xFFF1FBF4)],
       ),
       accent: TColors.teal,
     ),
@@ -203,7 +203,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
-                                  color: TColors.lavender,
+                                  color: TColors.mist,
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: const Text(
@@ -211,7 +211,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
-                                    color: TColors.violetDeep,
+                                    color: TColors.tealDeep,
                                     letterSpacing: 0.8,
                                   ),
                                 ),
@@ -361,7 +361,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                   shape: BoxShape.circle,
                   boxShadow: _isPlaying
                       ? TShadows.glowCoral
-                      : TShadows.glowViolet,
+                      : TShadows.glowTeal,
                 ),
                 child: Container(
                   margin: const EdgeInsets.all(4),
@@ -443,7 +443,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
           gradient: TGradients.night,
           radius: 26,
           padding: const EdgeInsets.all(24),
-          shadows: TShadows.glowViolet,
+          shadows: TShadows.glowTeal,
           child: Column(
             children: [
               const Text('🧭', style: TextStyle(fontSize: 44)),
@@ -480,7 +480,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                       Text(
                         'Start Family Mission',
                         style: TextStyle(
-                          color: TColors.violetDeep,
+                          color: TColors.tealDeep,
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                         ),
@@ -567,7 +567,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     children: [
                       _statChip('🗣️', '2 words', TColors.peach),
                       const SizedBox(width: 10),
-                      _statChip('📖', '4 scenes', TColors.lavender),
+                      _statChip('📖', '4 scenes', TColors.mist),
                       const SizedBox(width: 10),
                       _statChip('🎯', '1 mission', TColors.mint),
                     ],

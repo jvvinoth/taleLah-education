@@ -60,29 +60,17 @@ class SplashGate extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    gradient: TGradients.coral,
-                    shape: BoxShape.circle,
-                    boxShadow: TShadows.glowCoral,
-                  ),
-                  child: const Center(
-                    child: Text('🐦', style: TextStyle(fontSize: 52)),
-                  ),
-                ),
+                const TMascot(size: 116, wave: true),
                 const SizedBox(height: 28),
-                const Text(
-                  'TaleLah',
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -1,
-                    color: TColors.ink,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.asset(
+                    TBrand.wordmark,
+                    width: 220,
+                    fit: BoxFit.contain,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 const Text(
                   'Everyday moments. Mother-tongue magic.',
                   style: TextStyle(
@@ -96,7 +84,7 @@ class SplashGate extends StatelessWidget {
                   width: 28,
                   height: 28,
                   child: CircularProgressIndicator(
-                    color: TColors.coral,
+                    color: TColors.teal,
                     strokeWidth: 3,
                   ),
                 ),

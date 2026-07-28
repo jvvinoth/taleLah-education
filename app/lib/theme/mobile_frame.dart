@@ -24,7 +24,7 @@ class MobileFrame extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFEDE9FE), Color(0xFFFDF2F0), Color(0xFFE8F4FD)],
+              colors: [Color(0xFFF6EFE0), Color(0xFFFBF5EA), Color(0xFFE7F2EE)],
             ),
           ),
           child: Center(
@@ -32,16 +32,16 @@ class MobileFrame extends StatelessWidget {
               width: frameWidth,
               height: frameHeight,
               decoration: BoxDecoration(
-                color: const Color(0xFF15131F),
+                color: const Color(0xFF232D3A),
                 borderRadius: BorderRadius.circular(48),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1E1B33).withValues(alpha: 0.30),
+                    color: const Color(0xFF2E3A4A).withValues(alpha: 0.30),
                     blurRadius: 60,
                     offset: const Offset(0, 24),
                   ),
                   BoxShadow(
-                    color: TColors.violet.withValues(alpha: 0.18),
+                    color: TColors.teal.withValues(alpha: 0.18),
                     blurRadius: 100,
                     offset: const Offset(0, 40),
                   ),
@@ -72,7 +72,7 @@ class MobileFrame extends StatelessWidget {
                         width: 110,
                         height: 26,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF15131F),
+                          color: const Color(0xFF232D3A),
                           borderRadius: BorderRadius.circular(20),
                         ),
                       ),

@@ -85,18 +85,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   Widget _buildHeader(AppState app) {
     return Row(
       children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            gradient: TGradients.coral,
-            shape: BoxShape.circle,
-            boxShadow: TShadows.glowCoral,
-          ),
-          child: const Center(
-            child: Text('🐦', style: TextStyle(fontSize: 26)),
-          ),
-        ),
+        const TMascot(size: 52),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -117,6 +106,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.5,
+                  color: TColors.ink,
                 ),
               ),
             ],
@@ -147,7 +137,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     return TCard(
       gradient: TGradients.hero,
       radius: 28,
-      shadows: TShadows.glowViolet,
+      shadows: TShadows.glowTeal,
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,7 +221,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: TColors.violetDeep,
+                  color: TColors.tealDeep,
                 ),
               ),
             ),
@@ -276,12 +266,12 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add_rounded, color: TColors.violetDeep, size: 20),
+            Icon(Icons.add_rounded, color: TColors.tealDeep, size: 20),
             SizedBox(width: 6),
             Text(
               'Add your child',
               style: TextStyle(
-                color: TColors.violetDeep,
+                color: TColors.tealDeep,
                 fontWeight: FontWeight.w800,
                 fontSize: 14,
               ),
@@ -331,7 +321,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           // Text field
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F5FC),
+              color: const Color(0xFFF7F3E9),
               borderRadius: BorderRadius.circular(18),
             ),
             child: TextField(
@@ -354,7 +344,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 prefixIcon: Padding(
                   padding: const EdgeInsets.only(left: 12, right: 8, bottom: 40),
                   child: Icon(Icons.auto_awesome,
-                      color: TColors.violet.withValues(alpha: 0.6), size: 20),
+                      color: TColors.teal.withValues(alpha: 0.6), size: 20),
                 ),
               ),
             ),
@@ -373,7 +363,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: selected ? TColors.ink : const Color(0xFFF2F0F9),
+                      color: selected ? TColors.ink : const Color(0xFFF0EDE1),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     child: Column(
@@ -416,7 +406,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                     ? null
                     : TGradients.coral,
                 color: app.activeProfile == null || app.isGenerating
-                    ? const Color(0xFFE8E5F2)
+                    ? const Color(0xFFE8E4D8)
                     : null,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: app.activeProfile == null || app.isGenerating
@@ -472,7 +462,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       gradient: TGradients.night,
       radius: 28,
       padding: const EdgeInsets.all(24),
-      shadows: TShadows.glowViolet,
+      shadows: TShadows.glowTeal,
       child: Column(
         children: [
           Text(
@@ -500,7 +490,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               minHeight: 10,
               backgroundColor: Colors.white.withValues(alpha: 0.10),
               valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF8B7CF6)),
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF2F9E97)),
             ),
           ),
           const SizedBox(height: 20),
@@ -520,15 +510,15 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                     height: 44,
                     decoration: BoxDecoration(
                       color: done
-                          ? const Color(0xFF43D9B8)
+                          ? const Color(0xFF3BB8A9)
                           : active
-                              ? const Color(0xFF8B7CF6)
+                              ? const Color(0xFF2F9E97)
                               : Colors.white.withValues(alpha: 0.08),
                       shape: BoxShape.circle,
                       boxShadow: active
                           ? [
                               BoxShadow(
-                                color: const Color(0xFF8B7CF6)
+                                color: const Color(0xFF2F9E97)
                                     .withValues(alpha: 0.5),
                                 blurRadius: 16,
                               )
@@ -603,11 +593,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        _miniTag('${pkg.sceneCount} scenes', TColors.lavender,
-                            TColors.violetDeep),
+                        _miniTag('${pkg.sceneCount} scenes', TColors.mist,
+                            TColors.tealDeep),
                         const SizedBox(width: 6),
                         _miniTag(pkg.localeLabel, TColors.mint,
-                            const Color(0xFF0F9D8A)),
+                            const Color(0xFF1F7B75)),
                       ],
                     ),
                   ],
@@ -632,7 +622,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFFB8860B),
+                      color: Color(0xFFB07E1F),
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -655,7 +645,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             child: Container(
               height: 50,
               decoration: BoxDecoration(
-                color: TColors.lavender,
+                color: TColors.mist,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: const Center(
@@ -663,12 +653,12 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.tune_rounded,
-                        color: TColors.violetDeep, size: 20),
+                        color: TColors.tealDeep, size: 20),
                     SizedBox(width: 6),
                     Text(
                       'Review & Edit',
                       style: TextStyle(
-                        color: TColors.violetDeep,
+                        color: TColors.tealDeep,
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
@@ -686,7 +676,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               decoration: BoxDecoration(
                 gradient: TGradients.hero,
                 borderRadius: BorderRadius.circular(18),
-                boxShadow: TShadows.glowViolet,
+                boxShadow: TShadows.glowTeal,
               ),
               child: const Center(
                 child: Row(
@@ -887,7 +877,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               const SizedBox(height: 20),
               Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF7F5FC),
+                  color: const Color(0xFFF7F3E9),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: TextField(
