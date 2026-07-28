@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from ...core.language_packs import pack_loader
 from ...core.orchestrator import AgentName, TraceEntry, orchestrator
@@ -53,6 +53,9 @@ _profiles: dict[str, ChildProfile] = {}
 _speakers: dict[str, FamilySpeaker] = {}
 _moments: dict[str, Moment] = {}
 _sessions: dict[str, StorySession] = {}
+
+# F4 — pre-generated audio blobs: package_id → {filename: bytes}
+_media_blobs: dict[str, dict[str, bytes]] = {}
 
 
 # ── Auth (demo mode for Sprint 0) ─────────────────────────────────────────
@@ -295,7 +298,31 @@ async def approve_package(package_id: str, data: StoryPackageApproval):
         pkg = await orchestrator.approve_package(package_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+    # F4 — TTS pre-generation: synthesize the full media manifest on approval.
+    # Failure is non-fatal — assets stay text-only (parent-read fallback).
+    fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
+    if fvd is not None:
+        try:
+            blobs = await fvd.pregenerate_manifest(pkg)
+            _media_blobs[pkg.id] = blobs
+        except Exception as e:
+            logger.error(f"[F4] TTS pre-generation failed for {pkg.id}: {e}")
     return StoryPackageResponse.from_package(pkg)
+
+
+@router.get("/media/{package_id}/{filename}")
+async def get_media_asset(package_id: str, filename: str):
+    """F4 — serve a pre-generated audio asset from the media manifest."""
+    blob = _media_blobs.get(package_id, {}).get(filename)
+    if blob is None:
+        raise HTTPException(404, "Media asset not found")
+    media_type = "audio/wav" if filename.endswith(".wav") else "audio/mpeg"
+    return Response(
+        content=blob,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 # ── Parent Review & Edit (F2) ──────────────────────────────────────────────

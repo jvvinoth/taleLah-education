@@ -133,9 +133,26 @@ class SceneAsset(BaseModel):
     asset_url: str = ""
 
 
+class MediaAsset(BaseModel):
+    """F4 — one pre-generated audio asset in the media manifest.
+    url is relative to the API prefix (e.g. media/{pkg}/{id}.wav);
+    empty url == parent-read fallback (text + romanization)."""
+    id: str
+    kind: str  # scene | mission | handoff
+    scene_index: int = -1
+    url: str = ""
+    duration_ms: int = 0
+    tts_provider: str = "text_only"
+    text: str = ""
+    text_target_lang: str = ""
+
+
 class Media(BaseModel):
     narration_segments: list[NarrationSegment] = []
     scene_assets: list[SceneAsset] = []
+    # F4 — TTS pre-generation on approval
+    manifest: list[MediaAsset] = []
+    manifest_ready: bool = False
 
 
 class FamilyVoiceConfig(BaseModel):

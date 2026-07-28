@@ -1,6 +1,10 @@
 /// Child Session — premium interactive story playback with narration and choices.
+/// F4: plays the real approved story with pre-generated TTS audio (preloaded
+/// before the session starts); missing audio → parent-read fallback.
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import 'family_mode.dart';
@@ -16,6 +20,129 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   int _currentScene = 0;
   bool _isPlaying = false;
   bool _sessionComplete = false;
+
+  // F4 — real approved story + preloaded audio players (assetId → player)
+  ApprovedStory? _story;
+  final Map<String, AudioPlayer> _players = {};
+  bool _preloading = true;
+  double _preloadProgress = 0;
+  late List<_DemoScene> _scenes;
+
+  static const _sceneEmojis = ['✨', '🌈', '🌟', '🎈', '🪁', '🎨'];
+
+  @override
+  void initState() {
+    super.initState();
+    final app = context.read<AppState>();
+    _story = app.approvedStory;
+    _scenes = _buildScenes();
+    _preloadAudio(app);
+  }
+
+  @override
+  void dispose() {
+    for (final p in _players.values) {
+      p.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Real approved scenes when available; demo scenes as the degradation path.
+  List<_DemoScene> _buildScenes() {
+    final story = _story;
+    if (story == null || story.scenes.isEmpty) return _demoScenes;
+
+    final scenes = <_DemoScene>[];
+    for (var i = 0; i < story.scenes.length; i++) {
+      final s = story.scenes[i];
+      final palette = _demoScenes[i % _demoScenes.length];
+      final isChoice = s.interactionType == 'choice' && s.options.isNotEmpty;
+      scenes.add(_DemoScene(
+        title: i == 0 && story.title.isNotEmpty
+            ? story.title
+            : 'Chapter ${i + 1}',
+        narration: s.narrationTargetLang.isNotEmpty
+            ? s.narrationTargetLang
+            : s.narration,
+        english: s.narration,
+        emoji: _sceneEmojis[i % _sceneEmojis.length],
+        interaction: isChoice ? 'choice' : 'speak',
+        prompt: isChoice
+            ? 'What do you choose?'
+            : 'Your turn — say it out loud!',
+        choices: isChoice ? s.options : null,
+        gradient: palette.gradient,
+        accent: palette.accent,
+        assetId: 'scene_${s.index}',
+      ));
+    }
+    if (story.mission.isNotEmpty || story.missionTargetLang.isNotEmpty) {
+      final palette = _demoScenes[3];
+      scenes.add(_DemoScene(
+        title: 'Mission Time!',
+        narration: story.missionTargetLang.isNotEmpty
+            ? story.missionTargetLang
+            : story.mission,
+        english: story.mission,
+        emoji: '🎯',
+        interaction: 'mission',
+        prompt: story.mission,
+        gradient: palette.gradient,
+        accent: palette.accent,
+        assetId: 'mission',
+      ));
+    }
+    return scenes;
+  }
+
+  /// F4 — preload every manifest audio asset before the session starts.
+  Future<void> _preloadAudio(AppState app) async {
+    final story = _story;
+    final audioAssets =
+        story?.manifest.where((a) => a.hasAudio).toList() ?? [];
+    if (audioAssets.isEmpty) {
+      setState(() => _preloading = false);
+      return;
+    }
+    var done = 0;
+    for (final asset in audioAssets) {
+      final player = AudioPlayer();
+      try {
+        await player
+            .setSourceUrl(app.mediaUrl(asset.url))
+            .timeout(const Duration(seconds: 12));
+        _players[asset.id] = player;
+      } catch (_) {
+        // This asset falls back to parent-read (text + English).
+        player.dispose();
+      }
+      done++;
+      if (mounted) {
+        setState(() => _preloadProgress = done / audioAssets.length);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _preloading = false);
+    _playScene(0);
+  }
+
+  bool _hasAudio(_DemoScene scene) =>
+      scene.assetId != null && _players.containsKey(scene.assetId);
+
+  Future<void> _playScene(int index) async {
+    for (final p in _players.values) {
+      p.stop();
+    }
+    final assetId = _scenes[index].assetId;
+    final player = assetId == null ? null : _players[assetId];
+    if (player == null) return;
+    try {
+      await player.seek(Duration.zero);
+      await player.resume();
+    } catch (_) {
+      // Autoplay may be blocked until first tap — the LISTEN chip covers it.
+    }
+  }
 
   // Demo scenes for Sprint 1 shell (will be replaced by real data)
   final List<_DemoScene> _demoScenes = [
@@ -86,7 +213,11 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       return _buildCompleteScreen(app);
     }
 
-    final scene = _demoScenes[_currentScene];
+    if (_preloading) {
+      return _buildPreloadScreen();
+    }
+
+    final scene = _scenes[_currentScene];
     final topPad = MediaQuery.of(context).padding.top;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
@@ -107,7 +238,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     onTap: () => Navigator.pop(context),
                   ),
                   const Spacer(),
-                  ...List.generate(_demoScenes.length, (i) {
+                  ...List.generate(_scenes.length, (i) {
                     final active = i == _currentScene;
                     final done = i < _currentScene;
                     return AnimatedContainer(
@@ -135,7 +266,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                       boxShadow: TShadows.card,
                     ),
                     child: Text(
-                      '${_currentScene + 1}/${_demoScenes.length}',
+                      '${_currentScene + 1}/${_scenes.length}',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
@@ -199,20 +330,31 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: TColors.mist,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Text(
-                                  '🔊 LISTEN',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: TColors.tealDeep,
-                                    letterSpacing: 0.8,
+                              GestureDetector(
+                                onTap: _hasAudio(scene)
+                                    ? () => _playScene(_currentScene)
+                                    : null,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: _hasAudio(scene)
+                                        ? TColors.mist
+                                        : TColors.lemon,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    _hasAudio(scene)
+                                        ? '🔊 LISTEN'
+                                        : '📖 READ ALOUD',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: _hasAudio(scene)
+                                          ? TColors.tealDeep
+                                          : TColors.goldDeep,
+                                      letterSpacing: 0.8,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -260,7 +402,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                   if (_currentScene > 0)
                     _roundButton(
                       Icons.arrow_back_rounded,
-                      onTap: () => setState(() => _currentScene--),
+                      onTap: () {
+                        setState(() => _currentScene--);
+                        _playScene(_currentScene);
+                      },
                     ),
                   const Spacer(),
                   GestureDetector(
@@ -269,11 +414,11 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                       height: 56,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: BoxDecoration(
-                        gradient: _currentScene == _demoScenes.length - 1
+                        gradient: _currentScene == _scenes.length - 1
                             ? TGradients.mint
                             : TGradients.coral,
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: _currentScene == _demoScenes.length - 1
+                        boxShadow: _currentScene == _scenes.length - 1
                             ? [
                                 BoxShadow(
                                   color: TColors.teal.withValues(alpha: 0.35),
@@ -287,7 +432,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            _currentScene == _demoScenes.length - 1
+                            _currentScene == _scenes.length - 1
                                 ? 'Finish!'
                                 : 'Next',
                             style: const TextStyle(
@@ -298,7 +443,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                           ),
                           const SizedBox(width: 6),
                           Icon(
-                            _currentScene == _demoScenes.length - 1
+                            _currentScene == _scenes.length - 1
                                 ? Icons.celebration_rounded
                                 : Icons.arrow_forward_rounded,
                             color: Colors.white,
@@ -499,14 +644,68 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   }
 
   void _nextScene() {
-    if (_currentScene < _demoScenes.length - 1) {
+    if (_currentScene < _scenes.length - 1) {
       setState(() {
         _currentScene++;
         _isPlaying = false;
       });
+      _playScene(_currentScene);
     } else {
+      for (final p in _players.values) {
+        p.stop();
+      }
       setState(() => _sessionComplete = true);
     }
+  }
+
+  Widget _buildPreloadScreen() {
+    return Container(
+      decoration: const BoxDecoration(gradient: TGradients.page),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const TMascot(size: 96, wave: true),
+                const SizedBox(height: 24),
+                const Text(
+                  'Getting your story ready…',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: TColors.ink,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Loading every sound so nothing has to wait',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: TColors.inkSoft,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: _preloadProgress > 0 ? _preloadProgress : null,
+                    minHeight: 8,
+                    backgroundColor: TColors.mist,
+                    color: TColors.teal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildCompleteScreen(AppState app) {
@@ -567,7 +766,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     children: [
                       _statChip('🗣️', '2 words', TColors.peach),
                       const SizedBox(width: 10),
-                      _statChip('📖', '4 scenes', TColors.mist),
+                      _statChip('📖', '${_scenes.length} scenes', TColors.mist),
                       const SizedBox(width: 10),
                       _statChip('🎯', '1 mission', TColors.mint),
                     ],
@@ -676,6 +875,7 @@ class _DemoScene {
   final List<String>? choices;
   final Gradient gradient;
   final Color accent;
+  final String? assetId; // F4 — media manifest asset for this scene
 
   const _DemoScene({
     required this.title,
@@ -687,5 +887,6 @@ class _DemoScene {
     this.choices,
     required this.gradient,
     required this.accent,
+    this.assetId,
   });
 }

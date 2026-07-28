@@ -35,6 +35,13 @@ class AppState extends ChangeNotifier {
   StoryPackageSummary? _latestPackage;
   StoryPackageSummary? get latestPackage => _latestPackage;
 
+  // ── Approved story + media manifest (F4) ────────────────────────
+  ApprovedStory? _approvedStory;
+  ApprovedStory? get approvedStory => _approvedStory;
+
+  /// Absolute URL for a manifest-relative media path.
+  String mediaUrl(String relativeUrl) => '${api.baseUrl}/$relativeUrl';
+
   // ── Init ──────────────────────────────────────────────────────────────
 
   Future<void> initialize() async {
@@ -208,6 +215,18 @@ class AppState extends ChangeNotifier {
   Future<void> approvePackage() async {
     if (_latestPackage == null) return;
     await api.approvePackage(_latestPackage!.id);
+    // F4 — approval pre-generates the media manifest; fetch the approved
+    // package so child mode can preload every audio asset.
+    try {
+      final detail = await api.getPackageDetail(_latestPackage!.id);
+      final pkg = detail['package'] as Map<String, dynamic>?;
+      if (pkg != null) {
+        _approvedStory = ApprovedStory.fromPackageJson(pkg);
+      }
+    } catch (e) {
+      debugPrint('Approved story fetch failed: $e');
+      _approvedStory = null; // child mode falls back to demo scenes
+    }
     notifyListeners();
   }
 }
