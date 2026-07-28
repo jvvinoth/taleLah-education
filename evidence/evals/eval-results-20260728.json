@@ -1,11 +1,11 @@
 {
-  "ran_at": "2026-07-28T08:58:43.848900Z",
+  "ran_at": "2026-07-28T09:07:05.297819Z",
   "base_url": "http://127.0.0.1:8020",
-  "git_head": "e3a72d6",
+  "git_head": "3e0a85b",
   "git_clean": false,
   "total": 14,
-  "passed": 14,
-  "failed": 0,
+  "passed": 12,
+  "failed": 2,
   "criteria": [
     "status is awaiting_parent (or needs_clarification for ambiguous)",
     "exactly 4 scenes, 1 room mission, 1 family handoff (AC-01)",
@@ -20,7 +20,7 @@
       "id": "ta-01",
       "locale": "ta-SG",
       "moment": "We fed the pigeons at the void deck after breakfast",
-      "package_id": "story_d928c62d9f4b",
+      "package_id": "story_3e84a0824ded",
       "title": "Feeding the Pigeons",
       "status": "awaiting_parent",
       "verdict": "PASS",
@@ -30,8 +30,8 @@
       "id": "ta-02",
       "locale": "ta-SG",
       "moment": "She helped Amma water the money plant on the corridor",
-      "package_id": "story_0967287842af",
-      "title": "The Money Plant's Thirst",
+      "package_id": "story_78010ed13d60",
+      "title": "The Thirsty Money Plant",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -40,8 +40,8 @@
       "id": "ta-03",
       "locale": "ta-SG",
       "moment": "He stacked his blocks into a tall tower and it toppled over",
-      "package_id": "story_641418610a64",
-      "title": "The Tower's Big Fall",
+      "package_id": "story_ae85f9a728d9",
+      "title": "The Tower's Adventure",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -50,8 +50,8 @@
       "id": "ta-04",
       "locale": "ta-SG",
       "moment": "We bought rambutans at the wet market and she carried the bag",
-      "package_id": "story_1b77bcf95f64",
-      "title": "Rambutan Adventure at the Market",
+      "package_id": "story_b6540d184aaa",
+      "title": "The Rambutan Adventure",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -60,8 +60,8 @@
       "id": "ta-05",
       "locale": "ta-SG",
       "moment": "He found a snail on the corridor wall after the rain",
-      "package_id": "story_55594823aa95",
-      "title": "The Snail's Journey",
+      "package_id": "story_2261551322ca",
+      "title": "The Snail and the Rain",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -70,7 +70,7 @@
       "id": "ta-06",
       "locale": "ta-SG",
       "moment": "She drew a big yellow bus and stuck it on the fridge",
-      "package_id": "story_e006385ff9a7",
+      "package_id": "story_6124e578f5c0",
       "title": "The Big Yellow Bus Adventure",
       "status": "awaiting_parent",
       "verdict": "PASS",
@@ -80,8 +80,8 @@
       "id": "zh-01",
       "locale": "zh-SG",
       "moment": "He helped fold the laundry and matched all the socks",
-      "package_id": "story_369e1ae25f6c",
-      "title": "The Great Laundry Adventure",
+      "package_id": "story_316f0977d5db",
+      "title": "The Sock Matching Adventure",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -90,7 +90,7 @@
       "id": "zh-02",
       "locale": "zh-SG",
       "moment": "We saw a cat sleeping under the mama shop shelf",
-      "package_id": "story_02ae0423b6ca",
+      "package_id": "story_fdcf57232d4e",
       "title": "小猫的午睡冒险",
       "status": "awaiting_parent",
       "verdict": "PASS",
@@ -100,8 +100,8 @@
       "id": "zh-03",
       "locale": "zh-SG",
       "moment": "She packed her school bag all by herself tonight",
-      "package_id": "story_da5dfed48f01",
-      "title": "小明的上学背包",
+      "package_id": "story_3ac1271e1a25",
+      "title": "小明的上学准备",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -110,8 +110,8 @@
       "id": "ms-01",
       "locale": "ms-SG",
       "moment": "He shared his biscuits with his little cousin at the table",
-      "package_id": "story_ab401fc1faab",
-      "title": "The Biscuit Sharing Table",
+      "package_id": "story_bfda02f1323a",
+      "title": "Mina and the Missing MRT Color",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -120,8 +120,8 @@
       "id": "ms-02",
       "locale": "ms-SG",
       "moment": "We watched the MRT trains go by from the overhead bridge",
-      "package_id": "story_9ad9088fddad",
-      "title": "The Colorful MRT Adventure",
+      "package_id": "story_f6f3b96fa23c",
+      "title": "Mina and the Missing MRT Color",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -130,8 +130,8 @@
       "id": "ms-03",
       "locale": "ms-SG",
       "moment": "She put all her toy cars back into the red box before bed",
-      "package_id": "story_ba54a05694be",
-      "title": "The Magical Red Box",
+      "package_id": "story_532e58f75489",
+      "title": "Mina and the Missing MRT Color",
       "status": "awaiting_parent",
       "verdict": "PASS",
       "failures": []
@@ -140,21 +140,25 @@
       "id": "amb-01",
       "locale": "ta-SG",
       "moment": "it happened again today",
-      "package_id": "story_6d61fd2a3a86",
-      "title": "",
-      "status": "needs_clarification",
-      "verdict": "PASS",
-      "failures": []
+      "package_id": "story_ecb349fa05f2",
+      "title": "Mina and the Missing MRT Color",
+      "status": "awaiting_parent",
+      "verdict": "FAIL",
+      "failures": [
+        "status=awaiting_parent (want needs_clarification + question)"
+      ]
     },
     {
       "id": "amb-02",
       "locale": "ta-SG",
       "moment": "she did the thing with the stuff",
-      "package_id": "story_bd33185de080",
-      "title": "",
-      "status": "needs_clarification",
-      "verdict": "PASS",
-      "failures": []
+      "package_id": "story_bd2f5e7b620f",
+      "title": "Mina and the Missing MRT Color",
+      "status": "awaiting_parent",
+      "verdict": "FAIL",
+      "failures": [
+        "status=awaiting_parent (want needs_clarification + question)"
+      ]
     }
   ]
 }
