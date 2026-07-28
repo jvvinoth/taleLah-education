@@ -1256,4 +1256,5 @@ async def health():
         "agents": ["moment_lens", "learning_planner", "story_weaver",
                    "language_guardian", "family_voice_director", "growth_coach"],
         "language_packs": pack_loader.available_locales(),
+        "persistence": "neon" if persistence.enabled else "memory-only",
     }
