@@ -25,17 +25,44 @@ Rules:
 - Describe ONLY observable information. Do NOT identify people by name.
 - Do NOT infer ability, diagnosis, emotion, ethnicity, or religion.
 - Keep each fact to one observable action or object.
-- If confidence is below 0.7, flag it as needing parent clarification.
+- Score each fact's confidence 0.0-1.0 (how clearly the parent's words support it).
+- If the description is too vague to build a story from (no clear activity,
+  object, or place), set "clarification_question" to ONE short, friendly
+  question asking the parent for the missing detail. Otherwise set it to "".
 
-Respond with a JSON array of objects:
-[{"text": "observable fact description", "confidence": 0.95}]
+Respond with a JSON object:
+{"facts": [{"text": "observable fact description", "confidence": 0.95}],
+ "clarification_question": ""}
 
 Max 5 facts. No markdown. No explanation."""
+
+# F3 — below this per-fact confidence, we pause and ask the parent one question
+CLARIFY_THRESHOLD = 0.7
+DEFAULT_QUESTION = (
+    "Could you share one more detail — what did your child play with, "
+    "and where did it happen?"
+)
+
+
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, value))
 
 
 class MomentLensAgent(BaseAgent):
     name = "moment_lens"
-    spec_version = "1.1.0"
+    spec_version = "1.2.0"
+
+    def _clarification_question(
+        self, moment_text: str, facts: list[MomentFact], llm_question: str
+    ) -> str:
+        """F3 — decide whether the pipeline should pause for one parent answer."""
+        if llm_question:
+            return llm_question
+        if len(moment_text.split()) < 4:
+            return DEFAULT_QUESTION
+        if not facts or max(f.confidence for f in facts) < CLARIFY_THRESHOLD:
+            return DEFAULT_QUESTION
+        return ""
 
     async def execute(self, package: StoryPackage) -> StoryPackage:
         logger.info(f"[MomentLens] Processing package {package.id}")
@@ -46,39 +73,43 @@ class MomentLensAgent(BaseAgent):
             self._record_provenance(package)
             return package
 
-        # For text-based moments, use Qwen-Max to structure the facts
-        # For photo moments, use Qwen-VL to extract facts from image
-        # The moment text is stored in the API route before generation
+        moment_text = package.moment_text.strip()
+        llm_question = ""
 
-        # Since we don't have the moment object directly here,
-        # we use a default prompt. The API route will pre-populate facts
-        # for text moments. For photos, vision provider handles it.
-
-        if self.llm:
+        if self.llm and moment_text:
             try:
                 result = await self.llm.generate_json(
                     prompt=(
-                        "A parent described their child's activity: "
-                        "'The child built an MRT route using colored blocks — "
-                        "red, blue, and green trains going to different stations.'\n\n"
-                        "Extract observable facts as a JSON array."
+                        "A parent described their child's activity:\n"
+                        f'"{moment_text}"\n\n'
+                        "Extract observable facts as a JSON object."
                     ),
                     system=TEXT_SYSTEM_PROMPT,
                 )
 
-                if "data" in result:
-                    facts_raw = result["data"] if isinstance(result["data"], list) else [result["data"]]
-                elif "raw" in result:
-                    facts_raw = [{"text": result["raw"], "confidence": 0.8}]
-                else:
-                    facts_raw = [{"text": str(result), "confidence": 0.8}]
+                # generate_json returns the parsed dict directly, or
+                # {"data": [...]} for top-level arrays, or {"raw": text} on parse failure
+                payload = result if isinstance(result, dict) else {}
+                if "facts" not in payload:
+                    data = payload.get("data")
+                    if isinstance(data, dict):
+                        payload = data
+                    elif isinstance(data, list):
+                        payload = {"facts": data}
+
+                facts_raw = payload.get("facts") or []
+                llm_question = str(payload.get("clarification_question") or "").strip()
+                if not facts_raw:
+                    raw_text = str(payload.get("raw") or moment_text)
+                    facts_raw = [{"text": raw_text, "confidence": 0.75}]
 
                 package.moment_facts = [
                     MomentFact(
                         text=f.get("text", str(f)),
-                        confidence=float(f.get("confidence", 0.8)),
+                        confidence=_clamp(float(f.get("confidence", 0.8))),
                     )
                     for f in facts_raw[:5]
+                    if isinstance(f, dict) and f.get("text")
                 ]
                 self._set_model_version(package, "moment_lens", "qwen-max")
                 logger.info(f"[MomentLens] Generated {len(package.moment_facts)} facts via Qwen-Max")
@@ -86,21 +117,28 @@ class MomentLensAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"[MomentLens] Qwen call failed, using fallback: {e}")
                 package.moment_facts = [
-                    MomentFact(
-                        text="The child arranged colored blocks as an MRT route.",
-                        confidence=0.96,
-                    )
+                    MomentFact(text=moment_text, confidence=0.9)
                 ]
                 self._set_model_version(package, "moment_lens", "fallback")
         else:
-            # No LLM provider — use deterministic fallback
+            # No LLM provider — use the raw parent text as a single fact
             package.moment_facts = [
                 MomentFact(
-                    text="The child arranged colored blocks as an MRT route.",
-                    confidence=0.96,
+                    text=moment_text
+                    or "The child arranged colored blocks as an MRT route.",
+                    confidence=0.9 if moment_text else 0.96,
                 )
             ]
             self._set_model_version(package, "moment_lens", "fallback")
+
+        # F3 — flag the package if the moment is too vague to proceed
+        question = self._clarification_question(
+            moment_text, package.moment_facts, llm_question
+        )
+        if question:
+            package.clarification.needed = True
+            package.clarification.question = question
+            logger.info(f"[MomentLens] Needs clarification: {question}")
 
         self._record_provenance(package)
         return package

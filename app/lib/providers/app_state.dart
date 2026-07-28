@@ -101,6 +101,8 @@ class AppState extends ChangeNotifier {
     _isGenerating = true;
     _progressPct = 0.0;
     _currentAgent = '';
+    _pendingClarification = null;
+    _clarifyPackageId = null;
     _generationStatus = 'Capturing moment...';
     notifyListeners();
 
@@ -132,6 +134,11 @@ class AppState extends ChangeNotifier {
           _generationStatus = _agentLabel(event.agent);
         } else if (event.type == 'agent_completed') {
           _generationStatus = '${_agentLabel(event.agent)} done';
+        } else if (event.type == 'needs_clarification') {
+          // F3 — pipeline paused for one parent answer
+          _pendingClarification = event.question;
+          _clarifyPackageId = packageId;
+          _generationStatus = 'One quick question…';
         } else if (event.type == 'generation_complete') {
           _generationStatus = 'Complete!';
         } else if (event.type == 'error') {
@@ -154,10 +161,36 @@ class AppState extends ChangeNotifier {
       }
 
       _isGenerating = false;
+      _pendingClarification = null;
       notifyListeners();
     } catch (e) {
       _isGenerating = false;
+      _pendingClarification = null;
       _generationStatus = 'Error: $e';
+      notifyListeners();
+    }
+  }
+
+  // ── F3 · needs_clarification ──────────────────────────────────────
+
+  String? _pendingClarification;
+  String? _clarifyPackageId;
+
+  /// Non-null while the pipeline is paused waiting for the parent's answer.
+  String? get pendingClarification => _pendingClarification;
+
+  /// Send the parent's answer; the paused pipeline resumes over the same SSE stream.
+  Future<void> answerClarification(String answer) async {
+    final pkgId = _clarifyPackageId;
+    if (pkgId == null || answer.trim().isEmpty) return;
+    _pendingClarification = null;
+    _generationStatus = 'Thanks! Weaving the story…';
+    notifyListeners();
+    try {
+      await api.clarifyPackage(pkgId, answer.trim());
+    } catch (e) {
+      _generationStatus = 'Error: $e';
+      _isGenerating = false;
       notifyListeners();
     }
   }

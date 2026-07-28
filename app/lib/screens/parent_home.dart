@@ -16,6 +16,7 @@ class ParentHomeScreen extends StatefulWidget {
 
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
   final _textController = TextEditingController();
+  final _clarifyController = TextEditingController();
   String _selectedLocale = 'ta-SG';
   int _navIndex = 0;
 
@@ -28,6 +29,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   @override
   void dispose() {
     _textController.dispose();
+    _clarifyController.dispose();
     super.dispose();
   }
 
@@ -56,6 +58,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   _buildMomentCapture(app),
                   const SizedBox(height: 24),
                   if (app.isGenerating) ...[
+                    if (app.pendingClarification != null) ...[
+                      _buildClarificationCard(app),
+                      const SizedBox(height: 24),
+                    ],
                     _buildProgress(app),
                     const SizedBox(height: 24),
                   ],
@@ -454,6 +460,105 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     ('language_guardian', '🗣️', 'Translating'),
     ('family_voice_director', '🎙️', 'Voicing'),
   ];
+
+  // ── F3 · Clarification card ────────────────────────────────────────
+
+  Widget _buildClarificationCard(AppState app) {
+    return TCard(
+      radius: 28,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: TColors.lemon,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Text('🤔', style: TextStyle(fontSize: 20)),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'One quick question',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: TColors.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            app.pendingClarification ?? '',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: TColors.inkSoft,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F3E9),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: TextField(
+              controller: _clarifyController,
+              maxLines: 2,
+              maxLength: 300,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              decoration: const InputDecoration(
+                hintText: 'Add the missing detail…',
+                hintStyle: TextStyle(
+                  color: TColors.inkFaint,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+                counterText: '',
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.all(14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: GestureDetector(
+              onTap: () {
+                final answer = _clarifyController.text.trim();
+                if (answer.isEmpty) return;
+                app.answerClarification(answer);
+                _clarifyController.clear();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: TColors.teal,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Text(
+                  'Send answer',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildProgress(AppState app) {
     final activeIdx =

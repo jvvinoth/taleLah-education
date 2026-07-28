@@ -148,6 +148,20 @@ class ApiClient {
     );
   }
 
+  /// F3 — answer the one clarification question; pipeline resumes via SSE.
+  Future<void> clarifyPackage(String packageId, String answer) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/packages/$packageId/clarify'),
+      headers: _headers,
+      body: jsonEncode({'answer': answer}),
+    );
+    if (res.statusCode >= 400) {
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      throw ApiException(
+          res.statusCode, data['detail']?.toString() ?? res.body);
+    }
+  }
+
   // ── Parent Review & Edit (F2) ────────────────────────────────────
 
   Map<String, dynamic> _jsonOrThrow(http.Response res) {

@@ -153,6 +153,11 @@ class RegenerateRequest(BaseModel):
     scene_index: int = Field(default=0, ge=0, le=3)
 
 
+class ClarifyRequest(BaseModel):
+    """F3 — parent's answer to the one clarification question."""
+    answer: str = Field(min_length=1, max_length=500)
+
+
 # ── Session ────────────────────────────────────────────────────────────────
 
 class SessionStart(BaseModel):

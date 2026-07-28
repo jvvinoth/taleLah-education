@@ -290,6 +290,7 @@ class SSEEvent {
   final String status;
   final String error;
   final String packageId;
+  final String question; // F3 — needs_clarification
 
   SSEEvent({
     required this.type,
@@ -298,6 +299,7 @@ class SSEEvent {
     this.status = '',
     this.error = '',
     this.packageId = '',
+    this.question = '',
   });
 
   factory SSEEvent.fromJson(Map<String, dynamic> json) => SSEEvent(
@@ -307,5 +309,6 @@ class SSEEvent {
         status: json['status'] as String? ?? '',
         error: json['error'] as String? ?? '',
         packageId: json['package_id'] as String? ?? '',
+        question: json['question'] as String? ?? '',
       );
 }

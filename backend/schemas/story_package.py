@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 class StoryStatus(str, Enum):
     CAPTURED = "captured"
     INTERPRETING = "interpreving"
+    NEEDS_CLARIFICATION = "needs_clarification"  # F3 — paused for one parent answer
     PLANNING = "planning"
     WRITING = "writing"
     VALIDATING = "validating"
@@ -63,6 +64,13 @@ class ConfidenceLevel(str, Enum):
 class MomentFact(BaseModel):
     text: str
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class Clarification(BaseModel):
+    """F3 — one follow-up question when the moment is too vague."""
+    needed: bool = False
+    question: str = ""
+    answer: str = ""
 
 
 class LanguageInfo(BaseModel):
@@ -182,7 +190,11 @@ class StoryPackage(BaseModel):
     moment_id: str = ""
     language: LanguageInfo = LanguageInfo(locale="ta-SG")
 
+    # Raw parent description of the moment (input to Moment Lens)
+    moment_text: str = ""
     moment_facts: list[MomentFact] = []
+    # F3 — needs_clarification pause state
+    clarification: Clarification = Clarification()
     learning_plan: Optional[LearningPlan] = None
     story: Story = Story()
     media: Media = Media()

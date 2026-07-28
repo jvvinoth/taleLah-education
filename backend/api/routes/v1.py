@@ -15,6 +15,7 @@ from ...safety.gate import safety_gate
 from ...schemas.api_schemas import (
     ChildProfileCreate,
     ChildProfileResponse,
+    ClarifyRequest,
     DifficultyUpdate,
     FactsUpdate,
     MomentCreateText,
@@ -37,7 +38,6 @@ from ...schemas.story_package import (
     InputType,
     InteractionType,
     Moment,
-    MomentFact,
     SceneInteraction,
     StorySession,
     StoryStatus,
@@ -176,8 +176,8 @@ async def generate_package(moment_id: str, locale: str = "ta-SG"):
         locale=locale,
     )
 
-    # Seed the moment text into facts for Agent 1
-    pkg.moment_facts = [MomentFact(text=moment.parent_text, confidence=0.9)]
+    # Seed the raw moment text for Agent 1 (Moment Lens extracts facts — F3)
+    pkg.moment_text = moment.parent_text
 
     # Run the generation pipeline (Agents 1-5)
     try:
@@ -214,7 +214,7 @@ async def generate_package_async(
         locale=locale,
     )
 
-    pkg.moment_facts = [MomentFact(text=moment.parent_text, confidence=0.9)]
+    pkg.moment_text = moment.parent_text
 
     async def _run():
         try:
@@ -230,6 +230,36 @@ async def generate_package_async(
         "stream_url": f"/api/v1/packages/{pkg.id}/stream",
         "status": "generating",
     }
+
+
+@router.post("/packages/{package_id}/clarify")
+async def clarify_package(package_id: str, data: ClarifyRequest):
+    """
+    F3 — parent answers the one clarification question.
+    Resumes the paused pipeline in the background; SSE stream continues.
+    """
+    pkg = orchestrator.get_package(package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    if pkg.status != StoryStatus.NEEDS_CLARIFICATION:
+        raise HTTPException(
+            409, f"Package is not awaiting clarification: {pkg.status.value}"
+        )
+
+    answer = data.answer.strip()
+    if not answer:
+        raise HTTPException(422, "Answer cannot be empty")
+
+    async def _resume():
+        try:
+            await orchestrator.resume_with_clarification(package_id, answer)
+            safety_gate.validate_package(pkg)
+        except Exception as e:
+            await orchestrator._emit(package_id, {"type": "error", "error": str(e)})
+
+    asyncio.create_task(_resume())
+
+    return {"package_id": package_id, "status": "resuming"}
 
 
 @router.get("/packages/{package_id}/stream")

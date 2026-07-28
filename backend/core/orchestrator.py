@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Any, AsyncGenerator, Optional
 
 from ..schemas.story_package import (
+    MomentFact,
     StoryPackage,
     StoryStatus,
     ValidationStatus,
@@ -46,7 +47,12 @@ PRE_SESSION_AGENTS = [
 
 STATUS_TRANSITIONS: dict[StoryStatus, list[StoryStatus]] = {
     StoryStatus.CAPTURED: [StoryStatus.INTERPRETING],
-    StoryStatus.INTERPRETING: [StoryStatus.PLANNING, StoryStatus.CAPTURED],  # can retry
+    StoryStatus.INTERPRETING: [
+        StoryStatus.PLANNING,
+        StoryStatus.NEEDS_CLARIFICATION,  # F3 pause
+        StoryStatus.CAPTURED,
+    ],  # can retry
+    StoryStatus.NEEDS_CLARIFICATION: [StoryStatus.PLANNING, StoryStatus.CAPTURED],  # F3 resume
     StoryStatus.PLANNING: [StoryStatus.WRITING, StoryStatus.CAPTURED],
     StoryStatus.WRITING: [StoryStatus.VALIDATING, StoryStatus.CAPTURED],
     StoryStatus.VALIDATING: [StoryStatus.AWAITING_PARENT, StoryStatus.WRITING],  # revise loop
@@ -195,10 +201,11 @@ class WorkflowOrchestrator:
             TraceEntry("orchestrator", "transition", f"{old.value} → {new_status.value}")
         )
 
-    async def run_generation(self, package_id: str) -> StoryPackage:
+    async def run_generation(self, package_id: str, start_index: int = 0) -> StoryPackage:
         """
         Run the pre-session generation pipeline (Agents 1-5).
         This is the main entry point after moment capture.
+        F3: start_index > 0 resumes a paused pipeline (skips completed agents).
         """
         pkg = self._packages.get(package_id)
         if not pkg:
@@ -213,7 +220,9 @@ class WorkflowOrchestrator:
         }
 
         total = len(PRE_SESSION_AGENTS)
-        for idx, agent_name in enumerate(PRE_SESSION_AGENTS):
+        for idx, agent_name in enumerate(
+            PRE_SESSION_AGENTS[start_index:], start=start_index
+        ):
             target_status = agent_status_map[agent_name]
             progress = round((idx / total) * 100, 1)
 
@@ -244,6 +253,28 @@ class WorkflowOrchestrator:
                     "agent": agent_name.value,
                     "progress_pct": round(((idx + 1) / total) * 100, 1),
                 })
+
+                # F3 — pause the pipeline if Moment Lens needs a parent answer
+                if (
+                    agent_name == AgentName.MOMENT_LENS
+                    and pkg.clarification.needed
+                    and not pkg.clarification.answer
+                ):
+                    self._transition(pkg, StoryStatus.NEEDS_CLARIFICATION)
+                    self._traces[pkg.id].append(
+                        TraceEntry(
+                            "orchestrator", "paused", "Awaiting parent clarification"
+                        )
+                    )
+                    await self._emit(package_id, {
+                        "type": "needs_clarification",
+                        "package_id": package_id,
+                        "question": pkg.clarification.question,
+                        "status": StoryStatus.NEEDS_CLARIFICATION.value,
+                        "progress_pct": round((1 / total) * 100, 1),
+                    })
+                    logger.info(f"Pipeline paused for clarification: {package_id}")
+                    return pkg
             except Exception as e:
                 self._traces[pkg.id].append(
                     TraceEntry(agent_name.value, "failed", str(e))
@@ -279,6 +310,28 @@ class WorkflowOrchestrator:
             "status": StoryStatus.AWAITING_PARENT.value,
         })
         return pkg
+
+    async def resume_with_clarification(
+        self, package_id: str, answer: str
+    ) -> StoryPackage:
+        """F3 — merge the parent's answer and resume from the paused step."""
+        pkg = self._packages.get(package_id)
+        if not pkg:
+            raise ValueError(f"Package {package_id} not found")
+
+        if pkg.status != StoryStatus.NEEDS_CLARIFICATION:
+            raise ValueError(
+                f"Package not awaiting clarification: {pkg.status.value}"
+            )
+
+        pkg.moment_facts.append(MomentFact(text=answer, confidence=0.95))
+        pkg.clarification.answer = answer
+        pkg.clarification.needed = False
+        self._traces[pkg.id].append(
+            TraceEntry("orchestrator", "clarified", "Parent answered clarification")
+        )
+        # Resume after Moment Lens (idempotent — agent 1 already ran)
+        return await self.run_generation(package_id, start_index=1)
 
     async def approve_package(self, package_id: str) -> StoryPackage:
         """Parent approves the Story Package — final gate."""
