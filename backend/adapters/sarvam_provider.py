@@ -76,7 +76,7 @@ class SarvamTTSProvider(TTSProvider):
 
 
 class SarvamASRProvider(ASRProvider):
-    """Sarvam Saarika v2 — Tamil speech-to-text."""
+    """Sarvam Saarika v2.5 — Tamil speech-to-text."""
 
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -93,7 +93,7 @@ class SarvamASRProvider(ASRProvider):
             f"{SARVAM_API_URL}/speech-to-text",
             headers={"api-subscription-key": self.api_key},
             data={
-                "model": "saarika:v2",
+                "model": "saarika:v2.5",
                 "language_code": language,
             },
             files={"file": ("audio.wav", audio_bytes, "audio/wav")},

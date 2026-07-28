@@ -279,4 +279,23 @@ class AppState extends ChangeNotifier {
       return false;
     }
   }
+
+  // ── F6 · Child session ──────────────────────────────────────────
+
+  String? _sessionId;
+  String? get sessionId => _sessionId;
+
+  /// Start a backend session for the approved story so the bounded speech
+  /// turn can transcribe + match. Failure is non-fatal — the story plays
+  /// without a live speech turn (degradation ladder).
+  Future<void> startChildSession() async {
+    _sessionId = null;
+    final story = _approvedStory;
+    if (story == null) return;
+    try {
+      _sessionId = await api.startSession(story.packageId);
+    } catch (e) {
+      debugPrint('Session start failed: $e');
+    }
+  }
 }

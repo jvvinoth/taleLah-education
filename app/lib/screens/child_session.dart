@@ -1,9 +1,15 @@
 /// Child Session — premium interactive story playback with narration and choices.
 /// F4: plays the real approved story with pre-generated TTS audio (preloaded
 /// before the session starts); missing audio → parent-read fallback.
+/// F6: bounded child speech turn — record a short clip, backend matches it
+/// against the scene's expected intent only; miss 1 → replay slower,
+/// miss 2 → picture-choice fallback. Never says "wrong" (AC-04).
+import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
@@ -18,8 +24,15 @@ class ChildSessionScreen extends StatefulWidget {
 
 class _ChildSessionScreenState extends State<ChildSessionScreen> {
   int _currentScene = 0;
-  bool _isPlaying = false;
   bool _sessionComplete = false;
+
+  // F6 — bounded speech turn state (per scene)
+  final AudioRecorder _recorder = AudioRecorder();
+  Timer? _autoStopTimer;
+  String _speechPhase = 'idle'; // idle|recording|processing|celebrate|retry|fallback
+  int _attempt = 1;
+  String _feedbackCopy = '';
+  List<Map<String, dynamic>> _fallbackOptions = [];
 
   // F4 — real approved story + preloaded audio players (assetId → player)
   ApprovedStory? _story;
@@ -36,11 +49,14 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     final app = context.read<AppState>();
     _story = app.approvedStory;
     _scenes = _buildScenes();
+    app.startChildSession(); // F6 — non-fatal if it fails
     _preloadAudio(app);
   }
 
   @override
   void dispose() {
+    _autoStopTimer?.cancel();
+    _recorder.dispose();
     for (final p in _players.values) {
       p.dispose();
     }
@@ -74,6 +90,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         gradient: palette.gradient,
         accent: palette.accent,
         assetId: 'scene_${s.index}',
+        expectedIntent: s.expectedIntent,
       ));
     }
     if (story.mission.isNotEmpty || story.missionTargetLang.isNotEmpty) {
@@ -137,11 +154,147 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     final player = assetId == null ? null : _players[assetId];
     if (player == null) return;
     try {
+      await player.setPlaybackRate(1.0);
       await player.seek(Duration.zero);
       await player.resume();
     } catch (_) {
       // Autoplay may be blocked until first tap — the LISTEN chip covers it.
     }
+  }
+
+  // ── F6 — bounded speech turn ─────────────────────────────────────────
+
+  Future<void> _onMicTap() async {
+    if (_speechPhase == 'recording') {
+      await _stopAndSubmit();
+      return;
+    }
+    try {
+      if (!await _recorder.hasPermission()) {
+        _celebrateLocally(); // no mic → story never blocks
+        return;
+      }
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: 'clip.wav', // ignored on web (blob URL)
+      );
+      if (!mounted) return;
+      setState(() => _speechPhase = 'recording');
+      _autoStopTimer = Timer(const Duration(seconds: 6), _stopAndSubmit);
+    } catch (_) {
+      _celebrateLocally();
+    }
+  }
+
+  Future<void> _stopAndSubmit() async {
+    _autoStopTimer?.cancel();
+    if (_speechPhase != 'recording') return;
+    final app = context.read<AppState>();
+    setState(() => _speechPhase = 'processing');
+    try {
+      final path = await _recorder.stop();
+      final sessionId = app.sessionId;
+      if (path == null || sessionId == null) {
+        _celebrateLocally();
+        return;
+      }
+      final bytes = await http.readBytes(Uri.parse(path));
+      final result = await app.api.speechTurn(
+        sessionId: sessionId,
+        audioBytes: bytes,
+        expectedIntent: _scenes[_currentScene].expectedIntent ?? '',
+        attempt: _attempt,
+      );
+      if (!mounted) return;
+      _handleSpeechResult(result);
+    } catch (_) {
+      _celebrateLocally();
+    }
+  }
+
+  void _handleSpeechResult(Map<String, dynamic> r) {
+    final action = r['next_action'] as String? ?? 'celebrate';
+    if (action == 'retry_slower') {
+      setState(() {
+        _speechPhase = 'retry';
+        _attempt = (r['attempt'] as int? ?? _attempt) + 1;
+        _feedbackCopy =
+            r['encourage_copy'] as String? ?? 'மீண்டும் சொல்லலாம்! 💪';
+      });
+      _playSceneSlow();
+    } else if (action == 'picture_choice') {
+      final options = (r['fallback_options'] as List? ?? [])
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList();
+      if (options.isEmpty) {
+        _celebrateLocally();
+        return;
+      }
+      setState(() {
+        _speechPhase = 'fallback';
+        _fallbackOptions = options;
+      });
+    } else {
+      setState(() {
+        _speechPhase = 'celebrate';
+        _feedbackCopy = r['celebration_copy'] as String? ?? 'அருமை! 🎉';
+      });
+    }
+  }
+
+  Future<void> _chooseFallback(Map<String, dynamic> option) async {
+    final app = context.read<AppState>();
+    setState(() => _speechPhase = 'processing');
+    var copy = 'அருமை! (Super!) 🎉';
+    try {
+      final sessionId = app.sessionId;
+      if (sessionId != null) {
+        final r = await app.api
+            .speechFallback(sessionId, option['word'] as String? ?? '');
+        copy = r['celebration_copy'] as String? ?? copy;
+      }
+    } catch (_) {
+      // Any tap celebrates regardless — the story never blocks.
+    }
+    if (!mounted) return;
+    setState(() {
+      _speechPhase = 'celebrate';
+      _feedbackCopy = copy;
+    });
+  }
+
+  void _celebrateLocally() {
+    if (!mounted) return;
+    setState(() {
+      _speechPhase = 'celebrate';
+      _feedbackCopy = 'அருமை! (Super!) 🎉';
+    });
+  }
+
+  /// Miss 1 → replay the scene narration a little slower (AC-04 ladder).
+  Future<void> _playSceneSlow() async {
+    final assetId = _scenes[_currentScene].assetId;
+    final player = assetId == null ? null : _players[assetId];
+    if (player == null) return;
+    try {
+      await player.setPlaybackRate(0.8);
+      await player.seek(Duration.zero);
+      await player.resume();
+    } catch (_) {}
+  }
+
+  void _resetSpeechState() {
+    _autoStopTimer?.cancel();
+    _recorder.stop().catchError((_) => null);
+    _speechPhase = 'idle';
+    _attempt = 1;
+    _feedbackCopy = '';
+    _fallbackOptions = [];
   }
 
   // Demo scenes for Sprint 1 shell (will be replaced by real data)
@@ -403,7 +556,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     _roundButton(
                       Icons.arrow_back_rounded,
                       onTap: () {
-                        setState(() => _currentScene--);
+                        setState(() {
+                          _currentScene--;
+                          _resetSpeechState();
+                        });
                         _playScene(_currentScene);
                       },
                     ),
@@ -481,61 +637,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   Widget _buildInteraction(_DemoScene scene) {
     switch (scene.interaction) {
       case 'speak':
-        return Column(
-          children: [
-            Text(
-              scene.prompt,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: TColors.inkSoft,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            // Gradient mic ring
-            GestureDetector(
-              onTap: () => setState(() => _isPlaying = !_isPlaying),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                width: 92,
-                height: 92,
-                decoration: BoxDecoration(
-                  gradient:
-                      _isPlaying ? TGradients.coral : TGradients.hero,
-                  shape: BoxShape.circle,
-                  boxShadow: _isPlaying
-                      ? TShadows.glowCoral
-                      : TShadows.glowTeal,
-                ),
-                child: Container(
-                  margin: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.4),
-                      width: 2,
-                    ),
-                  ),
-                  child: Icon(
-                    _isPlaying ? Icons.stop_rounded : Icons.mic_rounded,
-                    color: Colors.white,
-                    size: 38,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _isPlaying ? 'Listening…' : 'Tap to speak',
-              style: const TextStyle(
-                color: TColors.inkFaint,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        );
+        return _buildSpeechTurn(scene);
 
       case 'choice':
         return Column(
@@ -643,11 +745,172 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     }
   }
 
+  /// F6 — the bounded speech turn UI, phased by _speechPhase.
+  Widget _buildSpeechTurn(_DemoScene scene) {
+    // Celebration chip — matched, fallback tap, or graceful degradation.
+    if (_speechPhase == 'celebrate') {
+      return TCard(
+        radius: 26,
+        padding: const EdgeInsets.all(22),
+        shadows: TShadows.glowTeal,
+        child: Column(
+          children: [
+            const Text('🎉', style: TextStyle(fontSize: 44)),
+            const SizedBox(height: 10),
+            Text(
+              _feedbackCopy,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: TColors.ink,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Picture-choice fallback — second miss; any tap celebrates.
+    if (_speechPhase == 'fallback') {
+      return Column(
+        children: [
+          const Text(
+            'Tap the word you like! 👇',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: TColors.inkSoft,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 14),
+          ..._fallbackOptions.map(
+            (o) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: GestureDetector(
+                onTap: () => _chooseFallback(o),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: TShadows.card,
+                    border: Border.all(
+                      color: scene.accent.withValues(alpha: 0.25),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        o['word'] as String? ?? '',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: TColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${o['romanised'] ?? ''} · ${o['english'] ?? ''}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: TColors.inkFaint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // idle | recording | processing | retry — mic ring with status copy.
+    final recording = _speechPhase == 'recording';
+    final processing = _speechPhase == 'processing';
+    return Column(
+      children: [
+        Text(
+          _speechPhase == 'retry' && _feedbackCopy.isNotEmpty
+              ? _feedbackCopy
+              : scene.prompt,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: TColors.inkSoft,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        // Gradient mic ring
+        GestureDetector(
+          onTap: processing ? null : _onMicTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            width: 92,
+            height: 92,
+            decoration: BoxDecoration(
+              gradient: recording ? TGradients.coral : TGradients.hero,
+              shape: BoxShape.circle,
+              boxShadow:
+                  recording ? TShadows.glowCoral : TShadows.glowTeal,
+            ),
+            child: Container(
+              margin: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  width: 2,
+                ),
+              ),
+              child: processing
+                  ? const Padding(
+                      padding: EdgeInsets.all(28),
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : Icon(
+                      recording ? Icons.stop_rounded : Icons.mic_rounded,
+                      color: Colors.white,
+                      size: 38,
+                    ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          recording
+              ? 'Listening… tap when done'
+              : processing
+                  ? 'One moment…'
+                  : _speechPhase == 'retry'
+                      ? 'Listen again, then tap to speak'
+                      : 'Tap to speak',
+          style: const TextStyle(
+            color: TColors.inkFaint,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
   void _nextScene() {
     if (_currentScene < _scenes.length - 1) {
       setState(() {
         _currentScene++;
-        _isPlaying = false;
+        _resetSpeechState();
       });
       _playScene(_currentScene);
     } else {
@@ -876,6 +1139,7 @@ class _DemoScene {
   final Gradient gradient;
   final Color accent;
   final String? assetId; // F4 — media manifest asset for this scene
+  final String? expectedIntent; // F6 — the only intent the matcher may score
 
   const _DemoScene({
     required this.title,
@@ -888,5 +1152,6 @@ class _DemoScene {
     required this.gradient,
     required this.accent,
     this.assetId,
+    this.expectedIntent,
   });
 }

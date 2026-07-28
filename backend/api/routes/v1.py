@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
+from ...core.config import settings
 from ...core.language_packs import pack_loader
 from ...core.orchestrator import AgentName, TraceEntry, orchestrator
+from ...core.speech import match_intent
 from ...safety.gate import safety_gate
 from ...schemas.api_schemas import (
     ChildProfileCreate,
@@ -23,6 +26,7 @@ from ...schemas.api_schemas import (
     RegenerateRequest,
     SessionStart,
     SessionSummary,
+    SpeechFallbackChoice,
     StoryPackageApproval,
     StoryPackageDetail,
     StoryPackageResponse,
@@ -57,6 +61,22 @@ _sessions: dict[str, StorySession] = {}
 
 # F4 — pre-generated audio blobs: package_id → {filename: bytes}
 _media_blobs: dict[str, dict[str, bytes]] = {}
+
+# F6 — lazy ASR provider registry (provider name → adapter)
+_asr_providers: dict[str, object] = {}
+
+
+def _get_asr(provider_name: str):
+    """Resolve the pack's ASR provider by name, instantiating on first use."""
+    if provider_name in _asr_providers:
+        return _asr_providers[provider_name]
+    if provider_name == "sarvam" and settings.sarvam_api_key:
+        from ...adapters.sarvam_provider import SarvamASRProvider
+        _asr_providers[provider_name] = SarvamASRProvider(
+            api_key=settings.sarvam_api_key
+        )
+        return _asr_providers[provider_name]
+    return None
 
 
 # ── Auth (demo mode for Sprint 0) ─────────────────────────────────────────
@@ -700,6 +720,136 @@ async def complete_session(session_id: str):
         fallback_events=session.fallback_events,
         completed_at=session.completed_at,
     )
+
+
+# ── F6 · Bounded child speech turn (AC-04, AC-07) ──────────────────────
+
+def _pick(copy_list: list[str], fallback: str) -> str:
+    return random.choice(copy_list) if copy_list else fallback
+
+
+@router.post("/sessions/{session_id}/speech-turn")
+async def speech_turn(
+    session_id: str,
+    audio: UploadFile = File(...),
+    expected_intent: str = Form(""),
+    attempt: int = Form(1),
+):
+    """
+    Transcribe the child clip, fuzzy-match against the pack's expected
+    intents only, and return bounded feedback. The raw transcript is never
+    returned; raw audio is discarded after intent extraction (AC-07).
+    Never says "wrong" — celebration/encouragement copy only (AC-04).
+    """
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    pkg = orchestrator.get_package(session.story_package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    pack = pack_loader.get(pkg.language.locale)
+    if not pack:
+        raise HTTPException(422, f"No language pack for {pkg.language.locale}")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Audio clip too large (max 5 MB)")
+
+    transcript = ""
+    asr_ok = False
+    asr = _get_asr(pack.providers.asr.provider)
+    if asr and audio_bytes:
+        try:
+            transcript = await asr.transcribe(
+                audio_bytes, language=pack.providers.asr.language
+            )
+            asr_ok = True
+        except Exception as e:
+            logger.warning(f"[SpeechTurn] ASR failed: {e}")
+    # AC-07 — raw child audio discarded after intent extraction; never stored
+    del audio_bytes
+
+    result = match_intent(
+        transcript,
+        pack.expected_intents,
+        floor=pack.speech.keyword_floor,
+        restrict_to=expected_intent,
+        normalization=pack.speech.normalization,
+    )
+
+    max_attempts = pack.speech.max_attempts
+    attempt = max(1, attempt)
+    if result.matched:
+        session.speech_turn_completed = True
+        next_action = "celebrate"
+    elif attempt < max_attempts:
+        next_action = "retry_slower"
+    else:
+        next_action = "picture_choice"
+
+    # Picture-choice options — pack word bank, target intent's word first
+    fallback_options: list[dict] = []
+    if next_action == "picture_choice":
+        bank = list(pack.word_bank)
+        random.shuffle(bank)
+        for entry in bank[:3]:
+            fallback_options.append({
+                "word": entry.word,
+                "romanised": entry.romanised,
+                "english": entry.english,
+            })
+
+    _trace_edit(
+        session.story_package_id,
+        "speech_turn",
+        f"attempt={attempt} matched={result.matched} "
+        f"intent={result.intent or '-'} score={result.score} "
+        f"asr_ok={asr_ok} (raw audio discarded)",
+    )
+
+    return {
+        "session_id": session_id,
+        "matched": result.matched,
+        "intent": result.intent,
+        "confidence": result.score,
+        "attempt": attempt,
+        "max_attempts": max_attempts,
+        "next_action": next_action,
+        "celebration_copy": _pick(pack.child_copy.celebration, "🎉"),
+        "encourage_copy": _pick(
+            pack.child_copy.encourage_retry, "Let's listen once more!"
+        ),
+        "listen_prompt": pack.child_copy.listen_prompt,
+        "fallback_options": fallback_options,
+        "audio_retained": False,
+    }
+
+
+@router.post("/sessions/{session_id}/speech-fallback")
+async def speech_fallback(session_id: str, data: SpeechFallbackChoice):
+    """Picture-choice fallback — any tap celebrates; the story continues."""
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    pkg = orchestrator.get_package(session.story_package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    pack = pack_loader.get(pkg.language.locale)
+
+    session.speech_turn_completed = True
+    session.fallback_events += 1
+    _trace_edit(
+        session.story_package_id,
+        "speech_fallback",
+        f"picture_choice selected='{data.selected_word}' "
+        f"(fallback_events={session.fallback_events})",
+    )
+    celebration = _pick(pack.child_copy.celebration, "🎉") if pack else "🎉"
+    return {
+        "session_id": session_id,
+        "celebration_copy": celebration,
+        "speech_turn_completed": True,
+    }
 
 
 # ── Language Pack Swap (AC-08 reusability proof) ───────────────────────

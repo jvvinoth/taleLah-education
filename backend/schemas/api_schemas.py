@@ -158,6 +158,11 @@ class ClarifyRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=500)
 
 
+class SpeechFallbackChoice(BaseModel):
+    """F6 — picture-choice fallback tap (any choice celebrates)."""
+    selected_word: str = ""
+
+
 # ── Session ────────────────────────────────────────────────────────────────
 
 class SessionStart(BaseModel):

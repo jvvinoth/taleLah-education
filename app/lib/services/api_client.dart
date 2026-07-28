@@ -156,6 +156,63 @@ class ApiClient {
         .toList();
   }
 
+  // ── F6 · Child session + bounded speech turn ──────────────────────
+
+  /// Start a child session for an approved package → session_id.
+  Future<String?> startSession(String packageId) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/sessions/start'),
+      headers: _headers,
+      body: jsonEncode({'story_package_id': packageId}),
+    );
+    if (res.statusCode >= 400) return null;
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return data['session_id'] as String?;
+  }
+
+  /// Upload a child speech clip — backend transcribes + fuzzy-matches
+  /// against the pack's expected intents only. Raw audio is discarded
+  /// server-side; the transcript never comes back.
+  Future<Map<String, dynamic>> speechTurn({
+    required String sessionId,
+    required List<int> audioBytes,
+    String expectedIntent = '',
+    int attempt = 1,
+  }) async {
+    final req = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/sessions/$sessionId/speech-turn'),
+    );
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.fields['expected_intent'] = expectedIntent;
+    req.fields['attempt'] = '$attempt';
+    req.files.add(http.MultipartFile.fromBytes(
+      'audio',
+      audioBytes,
+      filename: 'clip.wav',
+    ));
+    final streamed = await req.send().timeout(const Duration(seconds: 30));
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'Speech turn failed');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Picture-choice fallback tap — always celebrates (AC-04).
+  Future<Map<String, dynamic>> speechFallback(
+      String sessionId, String selectedWord) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/sessions/$sessionId/speech-fallback'),
+      headers: _headers,
+      body: jsonEncode({'selected_word': selectedWord}),
+    );
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'Fallback failed');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<void> approvePackage(String packageId) async {
     await _client.post(
       Uri.parse('$baseUrl/packages/$packageId/approve'),
