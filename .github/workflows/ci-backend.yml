@@ -43,13 +43,12 @@ jobs:
           pip install ruff
           ruff check backend/ --select E,F --ignore E501
 
-      - name: Run tests
+      - name: Run tests (incl. forbidden-copy audit + 25 adversarial safety evals)
         env:
           DASHSCOPE_API_KEY: test-key
           SARVAM_API_KEY: test-key
         run: |
-          cd backend
-          python -m pytest tests/ -v --tb=short 2>/dev/null || echo "No tests yet"
+          python -m pytest backend/tests -v --tb=short
 
       - name: Verify FastAPI starts
         env:

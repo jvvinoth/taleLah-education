@@ -33,6 +33,10 @@ jobs:
         working-directory: app
         run: flutter analyze --no-fatal-infos
 
+      - name: Test (incl. child-mode purity assertion — AC-03)
+        working-directory: app
+        run: flutter test
+
       - name: Build web (smoke)
         working-directory: app
         run: flutter build web --release

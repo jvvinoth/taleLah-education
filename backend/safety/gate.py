@@ -14,7 +14,7 @@ from ..schemas.story_package import StoryPackage, ValidationStatus
 
 logger = logging.getLogger(__name__)
 
-# Mission safety — reject any mission involving these
+# Mission safety — reject any mission involving these (word-boundary matched)
 MISSION_REJECT_KEYWORDS = [
     "leave the home", "leave the house", "go outside", "street",
     "stranger", "unknown person",
@@ -22,8 +22,8 @@ MISSION_REJECT_KEYWORDS = [
     "sharp", "knife", "scissors", "blade",
     "stove", "cooking", "fire", "hot", "heat", "boil",
     "medicine", "pill", "drug",
-    "allergy", "peanut", "food",
-    "water", "pool", "swim", "bath",
+    "allergy", "peanut", "eat", "taste", "swallow",
+    "pool", "swim", "bath", "bathtub", "bucket of water",
     "road", "traffic", "cross the road",
 ]
 
@@ -71,7 +71,9 @@ class SafetyGate:
 
         instruction_lower = mission_instruction.lower()
         for keyword in MISSION_REJECT_KEYWORDS:
-            if keyword in instruction_lower:
+            # Word-boundary match — bare substrings over-block (e.g. 'hot'
+            # inside 'photo', 'water' inside 'water the plant' was too broad)
+            if re.search(rf"\b{re.escape(keyword)}\b", instruction_lower):
                 return SafetyCheckResult(
                     False,
                     f"Mission rejected: contains unsafe action '{keyword}'"
