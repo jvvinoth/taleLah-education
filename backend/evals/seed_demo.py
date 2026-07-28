@@ -20,7 +20,16 @@ DEMO_MOMENT = "We fed the pigeons at the void deck after breakfast"
 def seed(base_url: str) -> None:
     client = httpx.Client(base_url=base_url, timeout=60.0)
 
-    profiles = client.get("/api/v1/profiles", params={"adult_id": "demo"}).json()
+    # The Flutter app auto-registers this email on load; register is
+    # idempotent by email, so this is the exact adult the app will use.
+    auth = client.post(
+        "/api/v1/auth/register",
+        json={"email": "demo@talelah.app", "display_name": "Demo Parent"},
+    ).json()
+    adult_id = auth["adult_id"]
+    print(f"✅ App demo adult: {adult_id}")
+
+    profiles = client.get("/api/v1/profiles", params={"adult_id": adult_id}).json()
     existing = next((p for p in profiles if p["alias"] == DEMO_ALIAS), None)
     if existing:
         print(f"✅ Demo profile already seeded: {existing['id']} ({DEMO_ALIAS})")
@@ -28,7 +37,7 @@ def seed(base_url: str) -> None:
     else:
         profile = client.post(
             "/api/v1/profiles",
-            params={"adult_id": "demo"},
+            params={"adult_id": adult_id},
             json={
                 "alias": DEMO_ALIAS,
                 "age_band": "4-5",

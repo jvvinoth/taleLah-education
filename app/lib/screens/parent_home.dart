@@ -377,9 +377,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   emoji: _isRecordingMoment ? '⏹️' : '🎙️',
                   label: _isRecordingMoment ? 'Recording… tap to send' : 'Speak it',
                   active: _isRecordingMoment,
-                  onTap: app.activeProfile == null || app.isGenerating
+                  onTap: app.isGenerating
                       ? null
-                      : () => _toggleVoiceCapture(app),
+                      : app.activeProfile == null
+                          ? () => _promptCreateProfile(app)
+                          : () => _toggleVoiceCapture(app),
                 ),
               ),
               const SizedBox(width: 10),
@@ -388,11 +390,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   emoji: '📸',
                   label: 'Snap it',
                   active: false,
-                  onTap: app.activeProfile == null ||
-                          app.isGenerating ||
-                          _isRecordingMoment
+                  onTap: app.isGenerating || _isRecordingMoment
                       ? null
-                      : () => _pickPhoto(app),
+                      : app.activeProfile == null
+                          ? () => _promptCreateProfile(app)
+                          : () => _pickPhoto(app),
                 ),
               ),
             ],
@@ -444,9 +446,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           const SizedBox(height: 18),
           // CTA
           GestureDetector(
-            onTap: app.activeProfile == null || app.isGenerating
+            onTap: app.isGenerating
                 ? null
-                : () => _startGeneration(app),
+                : app.activeProfile == null
+                    ? () => _promptCreateProfile(app)
+                    : () => _startGeneration(app),
             child: Container(
               height: 58,
               decoration: BoxDecoration(
@@ -1086,6 +1090,13 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// The capture controls look dimmed without a child profile — a tap must
+  /// explain why and open the fix, never silently ignore the parent.
+  void _promptCreateProfile(AppState app) {
+    _captureError("Add your child first — let's set up their profile");
+    _showCreateProfileDialog(app);
   }
 
   Future<void> _approveAndStart(AppState app) async {

@@ -163,6 +163,16 @@ def _wav_duration_seconds(data: bytes) -> float:
 
 @router.post("/auth/register", response_model=TokenResponse)
 async def register(data: AdultRegister):
+    # Idempotent by email — the app auto-registers on every load, so a repeat
+    # register must return the SAME adult or every session orphans its data
+    # (profiles/stories vanish on refresh, capture buttons stay disabled).
+    # sorted() keeps the pick deterministic across restarts/hydration order.
+    existing = sorted(
+        aid for aid, adult in _adults.items() if adult["email"] == data.email
+    )
+    if existing:
+        return TokenResponse(access_token=f"demo_{existing[0]}", adult_id=existing[0])
+
     adult_id = f"adult_{uuid.uuid4().hex[:12]}"
     _adults[adult_id] = {
         "id": adult_id,
