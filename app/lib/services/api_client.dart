@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import '../models/story_package.dart';
 
 class ApiException implements Exception {
@@ -103,6 +104,60 @@ class ApiClient {
       }),
     );
     return Moment.fromJson(jsonDecode(res.body));
+  }
+
+  /// F5 — voice note ≤45 s; backend transcribes via the pack's ASR provider.
+  Future<Moment> captureMomentVoice({
+    required String childProfileId,
+    required List<int> audioBytes,
+    String locale = 'ta-SG',
+  }) async {
+    final req = http.MultipartRequest(
+        'POST', Uri.parse('$baseUrl/moments/voice'));
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.fields['child_profile_id'] = childProfileId;
+    req.fields['locale'] = locale;
+    req.files.add(
+        http.MultipartFile.fromBytes('audio', audioBytes, filename: 'note.wav'));
+    final streamed = await req.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, _detail(res, 'Voice capture failed'));
+    }
+    return Moment.fromJson(jsonDecode(res.body));
+  }
+
+  /// F5 — photo ≤10 MB; Qwen-VL-Max turns it into moment facts.
+  Future<Moment> captureMomentPhoto({
+    required String childProfileId,
+    required List<int> imageBytes,
+    String contentType = 'image/jpeg',
+  }) async {
+    final req = http.MultipartRequest(
+        'POST', Uri.parse('$baseUrl/moments/photo'));
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.fields['child_profile_id'] = childProfileId;
+    final ext = contentType.split('/').last;
+    req.files.add(http.MultipartFile.fromBytes(
+      'image',
+      imageBytes,
+      filename: 'moment.$ext',
+      contentType: MediaType.parse(contentType),
+    ));
+    final streamed = await req.send().timeout(const Duration(seconds: 90));
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, _detail(res, 'Photo capture failed'));
+    }
+    return Moment.fromJson(jsonDecode(res.body));
+  }
+
+  String _detail(http.Response res, String fallback) {
+    try {
+      return jsonDecode(res.body)['detail'] as String? ?? fallback;
+    } catch (_) {
+      return fallback;
+    }
   }
 
   // ── Story Generation ──────────────────────────────────────────────────

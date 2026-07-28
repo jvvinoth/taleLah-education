@@ -96,6 +96,54 @@ class AppState extends ChangeNotifier {
     required String text,
     String locale = 'ta-SG',
   }) async {
+    await _captureAndGenerate(
+      locale: locale,
+      capturingStatus: 'Capturing moment...',
+      capture: () => api.captureMoment(
+        childProfileId: _activeProfile!.id,
+        text: text,
+      ),
+    );
+  }
+
+  /// F5 — voice note ≤45 s; backend transcribes, then the same pipeline runs.
+  Future<void> captureAndGenerateVoice({
+    required List<int> audioBytes,
+    String locale = 'ta-SG',
+  }) async {
+    await _captureAndGenerate(
+      locale: locale,
+      capturingStatus: 'Listening to your note…',
+      capture: () => api.captureMomentVoice(
+        childProfileId: _activeProfile!.id,
+        audioBytes: audioBytes,
+        locale: locale,
+      ),
+    );
+  }
+
+  /// F5 — photo ≤10 MB; Qwen-VL-Max reads it, then the same pipeline runs.
+  Future<void> captureAndGeneratePhoto({
+    required List<int> imageBytes,
+    String contentType = 'image/jpeg',
+    String locale = 'ta-SG',
+  }) async {
+    await _captureAndGenerate(
+      locale: locale,
+      capturingStatus: 'Looking at your photo…',
+      capture: () => api.captureMomentPhoto(
+        childProfileId: _activeProfile!.id,
+        imageBytes: imageBytes,
+        contentType: contentType,
+      ),
+    );
+  }
+
+  Future<void> _captureAndGenerate({
+    required Future<Moment> Function() capture,
+    required String locale,
+    required String capturingStatus,
+  }) async {
     if (_activeProfile == null) return;
 
     _isGenerating = true;
@@ -103,15 +151,12 @@ class AppState extends ChangeNotifier {
     _currentAgent = '';
     _pendingClarification = null;
     _clarifyPackageId = null;
-    _generationStatus = 'Capturing moment...';
+    _generationStatus = capturingStatus;
     notifyListeners();
 
     try {
-      // 1. Capture moment
-      final moment = await api.captureMoment(
-        childProfileId: _activeProfile!.id,
-        text: text,
-      );
+      // 1. Capture moment (text / voice / photo)
+      final moment = await capture();
 
       _generationStatus = 'Starting generation...';
       notifyListeners();

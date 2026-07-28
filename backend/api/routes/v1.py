@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import random
 import uuid
@@ -77,6 +78,36 @@ def _get_asr(provider_name: str):
         )
         return _asr_providers[provider_name]
     return None
+
+
+# F5 — lazy vision provider (Qwen-VL-Max) for photo moment capture
+_vision_provider: list[object] = []
+
+
+def _get_vision():
+    """Qwen-VL-Max via DashScope, instantiated on first use."""
+    if _vision_provider:
+        return _vision_provider[0]
+    if settings.dashscope_api_key:
+        from ...adapters.dashscope_provider import DashScopeVisionProvider
+        _vision_provider.append(DashScopeVisionProvider(
+            api_key=settings.dashscope_api_key,
+            base_url=settings.dashscope_base_url,
+            model=settings.qwen_vl_model,
+        ))
+        return _vision_provider[0]
+    return None
+
+
+def _wav_duration_seconds(data: bytes) -> float:
+    """Duration of a RIFF/WAVE clip from its header; 0.0 if not parseable."""
+    if len(data) < 44 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return 0.0
+    try:
+        byte_rate = int.from_bytes(data[28:32], "little")
+        return len(data) / byte_rate if byte_rate else 0.0
+    except Exception:
+        return 0.0
 
 
 # ── Auth (demo mode for Sprint 0) ─────────────────────────────────────────
@@ -169,6 +200,120 @@ async def capture_moment_text(data: MomentCreateText):
         child_profile_id=data.child_profile_id,
         input_type=InputType.TEXT,
         parent_text=data.text,
+        status="captured",
+    )
+    _moments[moment_id] = moment
+    return MomentResponse(
+        id=moment.id,
+        child_profile_id=moment.child_profile_id,
+        input_type=moment.input_type,
+        parent_text=moment.parent_text,
+        status=moment.status,
+        created_at=moment.created_at,
+    )
+
+
+@router.post("/moments/voice", response_model=MomentResponse)
+async def capture_moment_voice(
+    audio: UploadFile = File(...),
+    child_profile_id: str = Form(...),
+    locale: str = Form("ta-SG"),
+):
+    """F5 — parent voice note ≤45 s → pack ASR → text pipeline. Audio discarded."""
+    if child_profile_id not in _profiles:
+        raise HTTPException(404, "Child profile not found")
+    pack = pack_loader.get(locale)
+    if not pack:
+        raise HTTPException(422, f"No language pack for locale {locale}")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Audio too large (max 10 MB)")
+    duration = _wav_duration_seconds(audio_bytes)
+    if duration > 45.5:
+        raise HTTPException(422, "Voice note too long — keep it under 45 seconds")
+
+    asr = _get_asr(pack.providers.asr.provider)
+    if asr is None:
+        raise HTTPException(503, "Speech recognition unavailable — try typing instead")
+    try:
+        # Parents mix English + mother tongue — let Sarvam auto-detect.
+        transcript = await asr.transcribe(audio_bytes, language="unknown")
+    except Exception:
+        try:
+            transcript = await asr.transcribe(
+                audio_bytes, language=pack.providers.asr.language
+            )
+        except Exception as e:
+            logger.warning(f"[MomentVoice] ASR failed: {e}")
+            raise HTTPException(502, "Could not hear that — try again or type it")
+    del audio_bytes  # hard rule 5 — raw parent audio never retained
+
+    transcript = transcript.strip()
+    if not transcript:
+        raise HTTPException(422, "Could not hear any words — try again or type it")
+
+    moment_id = f"moment_{uuid.uuid4().hex[:12]}"
+    moment = Moment(
+        id=moment_id,
+        child_profile_id=child_profile_id,
+        input_type=InputType.VOICE,
+        parent_text=transcript,
+        transcript=transcript,
+        status="captured",
+    )
+    _moments[moment_id] = moment
+    return MomentResponse(
+        id=moment.id,
+        child_profile_id=moment.child_profile_id,
+        input_type=moment.input_type,
+        parent_text=moment.parent_text,
+        status=moment.status,
+        created_at=moment.created_at,
+    )
+
+
+@router.post("/moments/photo", response_model=MomentResponse)
+async def capture_moment_photo(
+    image: UploadFile = File(...),
+    child_profile_id: str = Form(...),
+):
+    """F5 — photo ≤10 MB → Qwen-VL-Max facts → text pipeline. Image discarded."""
+    if child_profile_id not in _profiles:
+        raise HTTPException(404, "Child profile not found")
+
+    content_type = (image.content_type or "").lower()
+    if content_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(415, "Use a JPEG, PNG, or WebP photo")
+    image_bytes = await image.read()
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Photo too large (max 10 MB)")
+
+    vision = _get_vision()
+    if vision is None:
+        raise HTTPException(503, "Photo understanding unavailable — try typing instead")
+    data_uri = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"
+    del image_bytes  # hard rule 5 — raw photo never retained
+    try:
+        facts = await vision.extract_facts(image_url=data_uri)
+    except Exception as e:
+        logger.warning(f"[MomentPhoto] Vision failed: {e}")
+        raise HTTPException(502, "Could not read that photo — try again or type it")
+
+    # An ambiguous photo yields thin facts → F3 clarification asks the parent.
+    fact_texts = [
+        str(f.get("text", "")).strip()
+        for f in facts
+        if isinstance(f, dict) and str(f.get("text", "")).strip()
+    ]
+    parent_text = ". ".join(t.rstrip(".") for t in fact_texts[:5])
+
+    moment_id = f"moment_{uuid.uuid4().hex[:12]}"
+    moment = Moment(
+        id=moment_id,
+        child_profile_id=child_profile_id,
+        input_type=InputType.PHOTO,
+        parent_text=parent_text,
         status="captured",
     )
     _moments[moment_id] = moment

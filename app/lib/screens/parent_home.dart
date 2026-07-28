@@ -1,6 +1,10 @@
 /// Parent Home — premium moment capture + story review.
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import 'child_session.dart';
@@ -22,6 +26,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   String _selectedLocale = 'ta-SG';
   int _navIndex = 0;
 
+  // F5 — voice note capture (≤45 s, enforced again server-side)
+  final AudioRecorder _momentRecorder = AudioRecorder();
+  Timer? _momentRecTimer;
+  bool _isRecordingMoment = false;
+
   static const _locales = [
     ('ta-SG', 'தமிழ்', 'Tamil'),
     ('zh-SG', '中文', 'Chinese'),
@@ -30,6 +39,8 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   @override
   void dispose() {
+    _momentRecTimer?.cancel();
+    _momentRecorder.dispose();
     _textController.dispose();
     _clarifyController.dispose();
     super.dispose();
@@ -357,6 +368,35 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          // F5 — voice + photo capture chips
+          Row(
+            children: [
+              Expanded(
+                child: _captureChip(
+                  emoji: _isRecordingMoment ? '⏹️' : '🎙️',
+                  label: _isRecordingMoment ? 'Recording… tap to send' : 'Speak it',
+                  active: _isRecordingMoment,
+                  onTap: app.activeProfile == null || app.isGenerating
+                      ? null
+                      : () => _toggleVoiceCapture(app),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _captureChip(
+                  emoji: '📸',
+                  label: 'Snap it',
+                  active: false,
+                  onTap: app.activeProfile == null ||
+                          app.isGenerating ||
+                          _isRecordingMoment
+                      ? null
+                      : () => _pickPhoto(app),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           // Language pills
           Row(
@@ -449,6 +489,44 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _captureChip({
+    required String emoji,
+    required String label,
+    required bool active,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? TColors.coral : const Color(0xFFF0EDE1),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: active ? TShadows.glowCoral : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 16)),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: active ? Colors.white : TColors.inkSoft,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -940,6 +1018,74 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     app.captureAndGenerate(text: text, locale: _selectedLocale);
     _textController.clear();
     FocusScope.of(context).unfocus();
+  }
+
+  // ── F5 · voice + photo capture ───────────────────────────────────
+
+  Future<void> _toggleVoiceCapture(AppState app) async {
+    if (_isRecordingMoment) {
+      _momentRecTimer?.cancel();
+      setState(() => _isRecordingMoment = false);
+      try {
+        final path = await _momentRecorder.stop();
+        if (path == null) return;
+        final bytes = await http.readBytes(Uri.parse(path));
+        await app.captureAndGenerateVoice(
+            audioBytes: bytes, locale: _selectedLocale);
+      } catch (e) {
+        _captureError('Could not use that recording — try typing instead');
+      }
+      return;
+    }
+    try {
+      if (!await _momentRecorder.hasPermission()) {
+        _captureError('Microphone not available — try typing instead');
+        return;
+      }
+      await _momentRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: 'moment.wav', // ignored on web (blob URL)
+      );
+      setState(() => _isRecordingMoment = true);
+      _momentRecTimer = Timer(const Duration(seconds: 45), () {
+        if (mounted && _isRecordingMoment) _toggleVoiceCapture(app);
+      });
+    } catch (_) {
+      _captureError('Microphone not available — try typing instead');
+    }
+  }
+
+  Future<void> _pickPhoto(AppState app) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (bytes.length > 10 * 1024 * 1024) {
+        _captureError('Photo too large — max 10 MB');
+        return;
+      }
+      await app.captureAndGeneratePhoto(
+        imageBytes: bytes,
+        contentType: picked.mimeType ?? 'image/jpeg',
+        locale: _selectedLocale,
+      );
+    } catch (_) {
+      _captureError('Could not read that photo — try typing instead');
+    }
+  }
+
+  void _captureError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _approveAndStart(AppState app) async {
