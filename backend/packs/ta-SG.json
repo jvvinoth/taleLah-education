@@ -1,5 +1,5 @@
 {
-  "pack_version": "1.1.0",
+  "pack_version": "1.2.0",
   "locale": "ta-SG",
   "language_name": "Tamil",
   "script": "Tamil",
@@ -38,6 +38,13 @@
     "celebration": ["நல்லா சொன்னே! 🎉", "அருமை!", "சூப்பர்!"],
     "encourage_retry": ["இன்னொரு முறை கேட்கலாமா?", "மெதுவா சொல்லலாம்!"],
     "listen_prompt": "மினாவுக்கு சொல்லு!"
+  },
+  "family_copy": {
+    "say_together": "சேர்ந்து சொல்லுங்க! — Say it together!",
+    "confident_hint": "Ask in Tamil and let the story do the rest.",
+    "learning_intro": "New to Tamil? Follow along — the script, sound and meaning are all here.",
+    "coach_tip": "Tap play, listen once, then say it slowly together. Any answer counts.",
+    "response_label": "If they answer, you can say"
   },
   "placeholder_phrases": {
     "What colour is this?": "இது என்ன நிறம்?",

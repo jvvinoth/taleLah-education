@@ -265,6 +265,21 @@ class StorySession(BaseModel):
     fallback_events: int = 0
 
 
+# ── Saved Memory (F10) ───────────────────────────────────────────────────────
+
+class SavedMemory(BaseModel):
+    """A family memory saved with explicit consent (F10, AC-07).
+    Deleting it removes this row AND the package's media files."""
+    id: str
+    session_id: str
+    story_package_id: str
+    child_profile_id: str = ""
+    title: str = ""
+    target_phrase: str = ""
+    note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 # ── Analytics Events ───────────────────────────────────────────────────────
 
 class AnalyticsEvent(BaseModel):

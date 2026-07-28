@@ -268,6 +268,90 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  // ── Sprint 4 · F8/F9/F10 — session milestones, summary, memories ──
+
+  /// F8/F9 — report a mission/handoff milestone. Fire-and-forget safe.
+  Future<void> sessionEvent(String sessionId, String kind) async {
+    final req = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/sessions/$sessionId/event'),
+    );
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.fields['kind'] = kind;
+    await req.send().timeout(const Duration(seconds: 15));
+  }
+
+  /// Session summary — celebration, no grades (F10).
+  Future<Map<String, dynamic>> completeSession(String sessionId) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/sessions/$sessionId/complete'),
+      headers: _headers,
+    );
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'Complete failed');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// F10 — save a memory; backend refuses without the consent tick.
+  Future<Map<String, dynamic>> saveMemory({
+    required String sessionId,
+    required bool consent,
+    String note = '',
+  }) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/memories'),
+      headers: _headers,
+      body: jsonEncode(
+          {'session_id': sessionId, 'consent': consent, 'note': note}),
+    );
+    return _jsonOrThrow(res);
+  }
+
+  Future<List<Map<String, dynamic>>> listMemories(
+      {String childProfileId = ''}) async {
+    final res = await _client.get(
+      Uri.parse('$baseUrl/memories?child_profile_id=$childProfileId'),
+      headers: _headers,
+    );
+    final data = _jsonOrThrow(res);
+    return (data['memories'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+  }
+
+  /// Deletes the memory row AND the package media (F10).
+  Future<void> deleteMemory(String memoryId) async {
+    final res = await _client.delete(
+      Uri.parse('$baseUrl/memories/$memoryId'),
+      headers: _headers,
+    );
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'Delete failed');
+    }
+  }
+
+  /// North-star metric only — family moments this week (hard rule 6).
+  Future<int> getProgress(String childProfileId) async {
+    final res = await _client.get(
+      Uri.parse('$baseUrl/progress/$childProfileId'),
+      headers: _headers,
+    );
+    final data = _jsonOrThrow(res);
+    return data['family_moments_this_week'] as int? ?? 0;
+  }
+
+  /// F9 — parent-facing handoff copy straight from the language pack.
+  Future<Map<String, dynamic>> getFamilyCopy(String locale) async {
+    final res = await _client.get(
+      Uri.parse('$baseUrl/packs/$locale/family-copy'),
+      headers: _headers,
+    );
+    final data = _jsonOrThrow(res);
+    return (data['family_copy'] as Map? ?? {}).cast<String, dynamic>();
+  }
+
   Future<void> approvePackage(String packageId) async {
     await _client.post(
       Uri.parse('$baseUrl/packages/$packageId/approve'),

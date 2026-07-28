@@ -1,5 +1,5 @@
 {
-  "pack_version": "1.1.0",
+  "pack_version": "1.2.0",
   "locale": "ms-SG",
   "language_name": "Malay",
   "script": "Rumi",
@@ -38,6 +38,13 @@
     "celebration": ["Bagusnya! 🎉", "Hebat!", "Pandai!"],
     "encourage_retry": ["Nak dengar sekali lagi?", "Jom cakap perlahan-lahan!"],
     "listen_prompt": "Beritahu Mina!"
+  },
+  "family_copy": {
+    "say_together": "Jom sebut sama-sama! — Say it together!",
+    "confident_hint": "Ask in Malay and let the story do the rest.",
+    "learning_intro": "New to Malay? Follow along — the words, sound and meaning are all here.",
+    "coach_tip": "Tap play, listen once, then say it slowly together. Any answer counts.",
+    "response_label": "If they answer, you can say"
   },
   "placeholder_phrases": {
     "What colour is this?": "Ini warna apa?",

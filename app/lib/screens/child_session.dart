@@ -4,6 +4,9 @@
 /// F6: bounded child speech turn — record a short clip, backend matches it
 /// against the scene's expected intent only; miss 1 → replay slower,
 /// miss 2 → picture-choice fallback. Never says "wrong" (AC-04).
+/// F7: child-mode lockdown — hold-to-exit gate, blocked back-nav, ≥56dp
+/// targets, Mina's 8 states (AC-03). F8: mission wait screen (AC-05).
+/// F9: family handoff modes (AC-06). F10: memory consent on goodbye.
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +16,8 @@ import 'package:record/record.dart';
 import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
-import 'family_mode.dart';
+import '../widgets/mina.dart';
+import 'mission_wait.dart';
 
 class ChildSessionScreen extends StatefulWidget {
   const ChildSessionScreen({super.key});
@@ -33,6 +37,18 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   int _attempt = 1;
   String _feedbackCopy = '';
   List<Map<String, dynamic>> _fallbackOptions = [];
+
+  // F7 — hold-to-exit gate (AC-03): 3 s continuous press opens the parent gate
+  Timer? _holdTimer;
+  double _holdProgress = 0;
+
+  // F8 — room mission milestone
+  bool _missionDone = false;
+
+  // F10 — memory consent on the goodbye screen (default OFF, hard rule)
+  bool _memoryConsent = false;
+  bool _memorySaved = false;
+  bool _savingMemory = false;
 
   // F4 — real approved story + preloaded audio players (assetId → player)
   ApprovedStory? _story;
@@ -56,6 +72,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   @override
   void dispose() {
     _autoStopTimer?.cancel();
+    _holdTimer?.cancel();
     _recorder.dispose();
     for (final p in _players.values) {
       p.dispose();
@@ -107,6 +124,23 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         gradient: palette.gradient,
         accent: palette.accent,
         assetId: 'mission',
+      ));
+    }
+    if (story.handoffPrompt.isNotEmpty ||
+        story.handoffPromptTargetLang.isNotEmpty) {
+      final palette = _demoScenes[1];
+      scenes.add(_DemoScene(
+        title: 'Family Time!',
+        narration: story.handoffPromptTargetLang.isNotEmpty
+            ? story.handoffPromptTargetLang
+            : story.handoffPrompt,
+        english: story.handoffPrompt,
+        emoji: '👨‍👩‍👧',
+        interaction: 'handoff',
+        prompt: story.handoffPrompt,
+        gradient: palette.gradient,
+        accent: palette.accent,
+        assetId: 'handoff',
       ));
     }
     return scenes;
@@ -297,6 +331,186 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     _fallbackOptions = [];
   }
 
+  // ── F7 · child-mode lockdown (AC-03) ──────────────────────
+
+  /// Reduced motion — respect MediaQuery.disableAnimations.
+  Duration _anim(int ms) => MediaQuery.of(context).disableAnimations
+      ? Duration.zero
+      : Duration(milliseconds: ms);
+
+  void _startHold(PointerDownEvent _) {
+    _holdTimer?.cancel();
+    _holdTimer = Timer.periodic(const Duration(milliseconds: 100), (t) {
+      if (!mounted) return;
+      setState(() => _holdProgress = (t.tick * 100) / 3000);
+      if (_holdProgress >= 1.0) {
+        t.cancel();
+        setState(() => _holdProgress = 0);
+        _openParentGate();
+      }
+    });
+  }
+
+  void _endHold([PointerEvent? _]) {
+    _holdTimer?.cancel();
+    if (_holdProgress > 0 && mounted) {
+      setState(() => _holdProgress = 0);
+    }
+  }
+
+  /// The gate a grown-up reaches after 3 s of holding — exit or skip.
+  void _openParentGate() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '👋 Grown-ups only',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: TColors.ink,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              _gateAction(sheetCtx, Icons.logout_rounded,
+                  'Exit child mode', TColors.coral, () {
+                Navigator.pop(sheetCtx);
+                Navigator.pop(context);
+              }),
+              const SizedBox(height: 10),
+              _gateAction(sheetCtx, Icons.fast_forward_rounded,
+                  'Skip family mission', TColors.tealDeep, () {
+                Navigator.pop(sheetCtx);
+                _skipMission();
+              }),
+              const SizedBox(height: 10),
+              _gateAction(sheetCtx, Icons.auto_stories_rounded,
+                  'Stay in the story', TColors.ink,
+                  () => Navigator.pop(sheetCtx)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _gateAction(BuildContext sheetCtx, IconData icon, String label,
+      Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 56,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// F8 — parent-skip from the hold gate: the mission never blocks anyone.
+  void _skipMission() {
+    setState(() => _missionDone = true);
+    if (_scenes[_currentScene].interaction == 'mission') {
+      _nextScene();
+    }
+  }
+
+  // ── F8 · room mission (AC-05) ───────────────────────────
+
+  Future<void> _startMission(_DemoScene scene) async {
+    final app = context.read<AppState>();
+    for (final p in _players.values) {
+      p.stop();
+    }
+    final done = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MissionWaitScreen(
+          missionText: scene.narration,
+          missionEnglish: scene.english,
+        ),
+      ),
+    );
+    if (done == true && mounted) {
+      setState(() => _missionDone = true);
+      app.reportSessionEvent('mission_completed');
+    }
+  }
+
+  // ── F9 · family handoff (AC-06) ──────────────────────────
+
+  void _completeHandoff() {
+    context.read<AppState>().reportSessionEvent('handoff_completed');
+    _nextScene();
+  }
+
+  // ── F10 · session summary + memory consent ───────────────────
+
+  void _finishSession() {
+    for (final p in _players.values) {
+      p.stop();
+    }
+    setState(() => _sessionComplete = true);
+    context.read<AppState>().completeChildSession();
+  }
+
+  Future<void> _saveMemory() async {
+    if (!_memoryConsent || _savingMemory) return;
+    setState(() => _savingMemory = true);
+    final ok = await context.read<AppState>().saveSessionMemory();
+    if (!mounted) return;
+    setState(() {
+      _savingMemory = false;
+      _memorySaved = ok;
+    });
+  }
+
+  /// F7 — Mina reacts to what the child is doing (8 states, no more).
+  MinaState _minaState(_DemoScene scene) {
+    switch (_speechPhase) {
+      case 'recording':
+        return MinaState.listening;
+      case 'processing':
+        return MinaState.thinking;
+      case 'retry':
+      case 'fallback':
+        return MinaState.encouraging;
+      case 'celebrate':
+        return MinaState.celebrating;
+    }
+    if (scene.interaction == 'mission') return MinaState.waiting;
+    if (scene.interaction == 'speak') return MinaState.demonstrating;
+    return MinaState.idle;
+  }
+
   // Demo scenes for Sprint 1 shell (will be replaced by real data)
   final List<_DemoScene> _demoScenes = [
     _DemoScene(
@@ -356,6 +570,20 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       ),
       accent: TColors.teal,
     ),
+    _DemoScene(
+      title: 'Family Time!',
+      narration: 'கதையைப் பற்றி குடும்பத்திடம் கேளு!',
+      english: 'Ask your family about the story!',
+      emoji: '👨‍👩‍👧',
+      interaction: 'handoff',
+      prompt: 'Ask the child what colour the train was.',
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFE0F2F0), Color(0xFFEBF7F3), Color(0xFFF2FAF6)],
+      ),
+      accent: TColors.teal,
+    ),
   ];
 
   @override
@@ -375,27 +603,27 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
+      duration: _anim(400),
       decoration: BoxDecoration(gradient: scene.gradient),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Column(
+        // AC-03 — system back never exits child mode; only the hold gate does.
+        body: PopScope(
+            canPop: false,
+            child: Column(
           children: [
-            // Top bar — close + progress dots
+            // Top bar — hold-to-exit gate + progress dots
             Padding(
               padding: EdgeInsets.fromLTRB(20, topPad + 12, 20, 0),
               child: Row(
                 children: [
-                  _roundButton(
-                    Icons.close_rounded,
-                    onTap: () => Navigator.pop(context),
-                  ),
+                  _holdExitButton(),
                   const Spacer(),
                   ...List.generate(_scenes.length, (i) {
                     final active = i == _currentScene;
                     final done = i < _currentScene;
                     return AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
+                      duration: _anim(300),
                       margin: const EdgeInsets.symmetric(horizontal: 3),
                       width: active ? 28 : 8,
                       height: 8,
@@ -484,12 +712,14 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               GestureDetector(
+                                behavior: HitTestBehavior.opaque,
                                 onTap: _hasAudio(scene)
                                     ? () => _playScene(_currentScene)
                                     : null,
+                                // Padding grows the hit area to ≥56 dp
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 5),
+                                      horizontal: 22, vertical: 17),
                                   decoration: BoxDecoration(
                                     color: _hasAudio(scene)
                                         ? TColors.mist
@@ -538,6 +768,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                       ),
                     ),
                     const SizedBox(height: 22),
+
+                    // F7 — Mina reacts to the child (8 states)
+                    Mina(state: _minaState(scene), size: 56),
+                    const SizedBox(height: 14),
 
                     // Interaction area
                     _buildInteraction(scene),
@@ -613,6 +847,43 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               ),
             ),
           ],
+        )),
+      ),
+    );
+  }
+
+  /// F7 — press-and-hold 3 s to reach the parent gate. A quick tap does
+  /// nothing — the child cannot leave (or skip) by accident.
+  Widget _holdExitButton() {
+    return Listener(
+      onPointerDown: _startHold,
+      onPointerUp: _endHold,
+      onPointerCancel: _endHold,
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: TShadows.card,
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (_holdProgress > 0)
+              SizedBox(
+                width: 42,
+                height: 42,
+                child: CircularProgressIndicator(
+                  value: _holdProgress.clamp(0.0, 1.0),
+                  strokeWidth: 3.5,
+                  color: TColors.coral,
+                  backgroundColor: TColors.mist,
+                ),
+              ),
+            const Icon(Icons.lock_outline_rounded,
+                color: TColors.ink, size: 22),
+          ],
         ),
       ),
     );
@@ -622,14 +893,14 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 44,
-        height: 44,
+        width: 56, // AC-03 — child touch targets ≥56 dp
+        height: 56,
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
           boxShadow: TShadows.card,
         ),
-        child: Icon(icon, color: TColors.ink, size: 20),
+        child: Icon(icon, color: TColors.ink, size: 22),
       ),
     );
   }
@@ -706,26 +977,144 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const FamilyModeScreen()),
-                ),
-                child: Container(
-                  height: 52,
+              if (_missionDone)
+                Container(
+                  height: 56,
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('🎉', style: TextStyle(fontSize: 18)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Mission done — well done!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: () => _startMission(scene),
+                  child: Container(
+                    height: 56,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('🎯', style: TextStyle(fontSize: 18)),
+                        SizedBox(width: 8),
+                        Text(
+                          'Start the Mission',
+                          style: TextStyle(
+                            color: TColors.tealDeep,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+
+      case 'handoff':
+        return _buildHandoff(scene);
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  /// F9 — family handoff (AC-06). Confident speaker: phrase + prompt,
+  /// minimal chrome. Learning parent: the coach card — script, audio,
+  /// meaning and tip on one screen. Copy comes from the pack.
+  Widget _buildHandoff(_DemoScene scene) {
+    final app = context.watch<AppState>();
+    final copy = app.familyCopy;
+    final learning =
+        (_story?.familyVoiceMode ?? '') == 'learning_parent';
+    final response = _story?.handoffResponseSuggestion ?? '';
+    String packCopy(String key, String fallback) {
+      final v = copy[key] as String? ?? '';
+      return v.isNotEmpty ? v : fallback;
+    }
+
+    return TCard(
+      radius: 26,
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        children: [
+          Text(
+            packCopy('say_together', '👨‍👩‍👧 Say it together!'),
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: TColors.ink,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          if (learning) ...[
+            // Coach card — everything a learning parent needs, one screen.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: TColors.lemon,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                packCopy('learning_intro',
+                    'Follow along — script, sound and meaning below.'),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: TColors.goldDeep,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (_hasAudio(scene))
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _playScene(_currentScene),
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: TColors.mist,
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: const Row(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('👨‍👩‍👧', style: TextStyle(fontSize: 18)),
+                      Icon(Icons.volume_up_rounded,
+                          color: TColors.tealDeep, size: 20),
                       SizedBox(width: 8),
                       Text(
-                        'Start Family Mission',
+                        'Hear it first',
                         style: TextStyle(
                           color: TColors.tealDeep,
                           fontSize: 15,
@@ -736,13 +1125,97 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                   ),
                 ),
               ),
-            ],
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: TColors.blush,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                packCopy('coach_tip',
+                    'Listen once, then say it slowly together.'),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: TColors.ink,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ] else
+            Text(
+              packCopy('confident_hint',
+                  'Ask away and let the story do the rest.'),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: TColors.inkFaint,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          if (response.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: TColors.mint,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    packCopy('response_label', 'If they answer, you can say'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: TColors.tealDeep,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    response,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: TColors.ink,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: _completeHandoff,
+            child: Container(
+              height: 56,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: TGradients.mint,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Center(
+                child: Text(
+                  'We did it! 🙌',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
           ),
-        );
-
-      default:
-        return const SizedBox.shrink();
-    }
+        ],
+      ),
+    );
   }
 
   /// F6 — the bounded speech turn UI, phased by _speechPhase.
@@ -914,10 +1387,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       });
       _playScene(_currentScene);
     } else {
-      for (final p in _players.values) {
-        p.stop();
-      }
-      setState(() => _sessionComplete = true);
+      _finishSession();
     }
   }
 
@@ -926,13 +1396,15 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       decoration: const BoxDecoration(gradient: TGradients.page),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: Center(
+        body: PopScope(
+          canPop: false, // AC-03 — blocked during preload too
+          child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 48),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const TMascot(size: 96, wave: true),
+                const Mina(state: MinaState.thinking, size: 96),
                 const SizedBox(height: 24),
                 const Text(
                   'Getting your story ready…',
@@ -966,43 +1438,32 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               ],
             ),
           ),
-        ),
+        )),
       ),
     );
   }
 
   Widget _buildCompleteScreen(AppState app) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
+    final summary = app.sessionSummary;
+    final targetPhrase = summary?['target_phrase'] as String? ?? '';
     return Container(
       decoration: const BoxDecoration(gradient: TGradients.page),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: SafeArea(
+        // AC-03 — the goodbye screen still blocks system back; the big
+        // button below is the only exit.
+        body: PopScope(
+          canPop: false,
+          child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(28, 24, 28, bottomPad + 24),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      gradient: TGradients.mint,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: TColors.teal.withValues(alpha: 0.35),
-                          blurRadius: 50,
-                          offset: const Offset(0, 16),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Text('🎉', style: TextStyle(fontSize: 64)),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
+                  const Mina(state: MinaState.goodbye, size: 120),
+                  const SizedBox(height: 24),
                   const Text(
                     'Great job today!',
                     style: TextStyle(
@@ -1023,18 +1484,145 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
-                  // Stat chips
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  // F10 — celebration, no grades: what happened, not a score.
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 10,
+                    runSpacing: 10,
                     children: [
-                      _statChip('🗣️', '2 words', TColors.peach),
-                      const SizedBox(width: 10),
-                      _statChip('📖', '${_scenes.length} scenes', TColors.mist),
-                      const SizedBox(width: 10),
-                      _statChip('🎯', '1 mission', TColors.mint),
+                      _statChip('🗣️', 'Spoke up', TColors.peach),
+                      _statChip('🎯',
+                          _missionDone ? 'Mission done' : 'Mission try',
+                          TColors.mint),
+                      _statChip('👨‍👩‍👧', 'Family moment', TColors.mist),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  if (targetPhrase.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    TCard(
+                      radius: 24,
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        children: [
+                          const Text(
+                            "🌟 TODAY'S PHRASE",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: TColors.inkFaint,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            targetPhrase,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: TColors.ink,
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  // F10 — memory consent: explicit tick, default OFF.
+                  TCard(
+                    radius: 24,
+                    padding: const EdgeInsets.all(18),
+                    child: _memorySaved
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('📖', style: TextStyle(fontSize: 20)),
+                              SizedBox(width: 8),
+                              Text(
+                                'Memory saved for your family',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: TColors.tealDeep,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => setState(() =>
+                                    _memoryConsent = !_memoryConsent),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: Checkbox(
+                                        value: _memoryConsent,
+                                        activeColor: TColors.teal,
+                                        onChanged: (v) => setState(() =>
+                                            _memoryConsent = v ?? false),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Text(
+                                        'Save this story as a family memory. '
+                                        'Nothing is kept without this tick.',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: TColors.inkSoft,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              GestureDetector(
+                                onTap: _memoryConsent ? _saveMemory : null,
+                                child: Container(
+                                  height: 48,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: _memoryConsent
+                                        ? TColors.tealDeep
+                                        : TColors.mist,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Center(
+                                    child: _savingMemory
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : Text(
+                                            'Save memory',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: _memoryConsent
+                                                  ? Colors.white
+                                                  : TColors.inkFaint,
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                  const SizedBox(height: 18),
                   TCard(
                     radius: 24,
                     padding: const EdgeInsets.all(20),
@@ -1098,7 +1686,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               ),
             ),
           ),
-        ),
+        )),
       ),
     );
   }

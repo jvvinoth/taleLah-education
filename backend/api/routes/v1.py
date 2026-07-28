@@ -6,7 +6,7 @@ import base64
 import logging
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
@@ -22,6 +22,7 @@ from ...schemas.api_schemas import (
     ClarifyRequest,
     DifficultyUpdate,
     FactsUpdate,
+    MemorySaveRequest,
     MomentCreateText,
     MomentResponse,
     RegenerateRequest,
@@ -44,6 +45,7 @@ from ...schemas.story_package import (
     InteractionType,
     Moment,
     MomentFact,
+    SavedMemory,
     SceneInteraction,
     StorySession,
     StoryStatus,
@@ -59,6 +61,8 @@ _profiles: dict[str, ChildProfile] = {}
 _speakers: dict[str, FamilySpeaker] = {}
 _moments: dict[str, Moment] = {}
 _sessions: dict[str, StorySession] = {}
+# F10 — memories exist ONLY after an explicit consent tick
+_memories: dict[str, SavedMemory] = {}
 
 # F4 — pre-generated audio blobs: package_id → {filename: bytes}
 _media_blobs: dict[str, dict[str, bytes]] = {}
@@ -867,6 +871,25 @@ async def complete_session(session_id: str):
     )
 
 
+@router.post("/sessions/{session_id}/event")
+async def session_event(session_id: str, kind: str = Form(...)):
+    """F8/F9 — the child app reports mission + handoff milestones."""
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if kind == "mission_completed":
+        session.mission_completed = True
+    elif kind == "handoff_completed":
+        session.handoff_completed = True
+    else:
+        raise HTTPException(422, f"Unknown session event '{kind}'")
+    return {
+        "session_id": session_id,
+        "mission_completed": session.mission_completed,
+        "handoff_completed": session.handoff_completed,
+    }
+
+
 # ── F6 · Bounded child speech turn (AC-04, AC-07) ──────────────────────
 
 def _pick(copy_list: list[str], fallback: str) -> str:
@@ -997,6 +1020,75 @@ async def speech_fallback(session_id: str, data: SpeechFallbackChoice):
     }
 
 
+# ── F10 · Memory consent + progress (AC-07, hard rule 6) ───────────────
+
+@router.post("/memories", status_code=201)
+async def save_memory(data: MemorySaveRequest):
+    """Save a family memory — refused without the explicit consent tick."""
+    if not data.consent:
+        raise HTTPException(403, "Memory consent required — nothing was saved")
+    session = _sessions.get(data.session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    pkg = orchestrator.get_package(session.story_package_id)
+    memory_id = f"mem_{uuid.uuid4().hex[:10]}"
+    memory = SavedMemory(
+        id=memory_id,
+        session_id=data.session_id,
+        story_package_id=session.story_package_id,
+        child_profile_id=pkg.child_profile_id if pkg else "",
+        title=pkg.story.title if pkg else "",
+        target_phrase=(
+            pkg.learning_plan.target_phrase if pkg and pkg.learning_plan else ""
+        ),
+        note=data.note,
+    )
+    _memories[memory_id] = memory
+    return memory.model_dump()
+
+
+@router.get("/memories")
+async def list_memories(child_profile_id: str = ""):
+    items = [
+        m.model_dump()
+        for m in _memories.values()
+        if not child_profile_id or m.child_profile_id == child_profile_id
+    ]
+    items.sort(key=lambda m: m["created_at"], reverse=True)
+    return {"memories": items}
+
+
+@router.delete("/memories/{memory_id}")
+async def delete_memory(memory_id: str):
+    """Delete a saved memory — removes the row AND the package media blobs."""
+    memory = _memories.pop(memory_id, None)
+    if not memory:
+        raise HTTPException(404, "Memory not found")
+    media_purged = _media_blobs.pop(memory.story_package_id, None) is not None
+    return {"deleted": memory_id, "media_purged": media_purged}
+
+
+@router.get("/progress/{child_profile_id}")
+async def get_progress(child_profile_id: str):
+    """North-star metric ONLY — completed family language moments this week.
+    No scores, no streaks, no proficiency claims (hard rule 6)."""
+    if child_profile_id not in _profiles:
+        raise HTTPException(404, "Child profile not found")
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    count = 0
+    for session in _sessions.values():
+        if not session.completed_at or session.completed_at < week_ago:
+            continue
+        pkg = orchestrator.get_package(session.story_package_id)
+        if pkg and pkg.child_profile_id == child_profile_id:
+            count += 1
+    return {
+        "child_profile_id": child_profile_id,
+        "metric": "completed family language moments this week",
+        "family_moments_this_week": count,
+    }
+
+
 # ── Language Pack Swap (AC-08 reusability proof) ───────────────────────
 
 @router.get("/packs")
@@ -1015,6 +1107,19 @@ async def list_packs():
             for locale in pack_loader.available_locales()
             if (p := pack_loader.get(locale))
         ]
+    }
+
+
+@router.get("/packs/{locale}/family-copy")
+async def get_family_copy(locale: str):
+    """F9 — parent-facing handoff copy straight from the pack (AC-08)."""
+    pack = pack_loader.get(locale)
+    if not pack:
+        raise HTTPException(404, f"No language pack for '{locale}'")
+    return {
+        "locale": locale,
+        "pack_version": pack.pack_version,
+        "family_copy": pack.family_copy.model_dump(),
     }
 
 

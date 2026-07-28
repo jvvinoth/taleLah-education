@@ -330,17 +330,96 @@ class AppState extends ChangeNotifier {
   String? _sessionId;
   String? get sessionId => _sessionId;
 
+  // F9 — handoff copy from the active language pack (no locale literals here)
+  Map<String, dynamic> _familyCopy = {};
+  Map<String, dynamic> get familyCopy => _familyCopy;
+
+  // F10 — summary of the finished session (celebration, no grades)
+  Map<String, dynamic>? _sessionSummary;
+  Map<String, dynamic>? get sessionSummary => _sessionSummary;
+
   /// Start a backend session for the approved story so the bounded speech
   /// turn can transcribe + match. Failure is non-fatal — the story plays
   /// without a live speech turn (degradation ladder).
   Future<void> startChildSession() async {
     _sessionId = null;
+    _sessionSummary = null;
     final story = _approvedStory;
     if (story == null) return;
     try {
       _sessionId = await api.startSession(story.packageId);
     } catch (e) {
       debugPrint('Session start failed: $e');
+    }
+    try {
+      _familyCopy = await api.getFamilyCopy(story.locale);
+    } catch (e) {
+      debugPrint('Family copy load failed: $e');
+    }
+  }
+
+  /// F8/F9 — report a session milestone; never blocks the child.
+  Future<void> reportSessionEvent(String kind) async {
+    final id = _sessionId;
+    if (id == null) return;
+    try {
+      await api.sessionEvent(id, kind);
+    } catch (e) {
+      debugPrint('Session event failed: $e');
+    }
+  }
+
+  /// F10 — close the session and keep the summary for the goodbye screen.
+  Future<void> completeChildSession() async {
+    final id = _sessionId;
+    if (id == null) return;
+    try {
+      _sessionSummary = await api.completeSession(id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Session complete failed: $e');
+    }
+  }
+
+  /// F10 — save the memory; only ever called with an explicit consent tick.
+  Future<bool> saveSessionMemory({String note = ''}) async {
+    final id = _sessionId;
+    if (id == null) return false;
+    try {
+      await api.saveMemory(sessionId: id, consent: true, note: note);
+      return true;
+    } catch (e) {
+      debugPrint('Memory save failed: $e');
+      return false;
+    }
+  }
+
+  // ── F10 · Progress + saved memories (parent-facing) ───────────
+
+  int _familyMomentsThisWeek = 0;
+  int get familyMomentsThisWeek => _familyMomentsThisWeek;
+  List<Map<String, dynamic>> _memories = [];
+  List<Map<String, dynamic>> get memories => _memories;
+
+  Future<void> refreshProgress() async {
+    final profile = _activeProfile;
+    if (profile == null) return;
+    try {
+      _familyMomentsThisWeek = await api.getProgress(profile.id);
+      _memories = await api.listMemories(childProfileId: profile.id);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Progress refresh failed: $e');
+    }
+  }
+
+  Future<void> deleteMemory(String memoryId) async {
+    try {
+      await api.deleteMemory(memoryId);
+      _memories.removeWhere((m) => m['id'] == memoryId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Memory delete failed: $e');
     }
   }
 }

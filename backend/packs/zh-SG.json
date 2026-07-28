@@ -1,5 +1,5 @@
 {
-  "pack_version": "1.1.0",
+  "pack_version": "1.2.0",
   "locale": "zh-SG",
   "language_name": "Mandarin Chinese",
   "script": "Simplified Chinese",
@@ -38,6 +38,13 @@
     "celebration": ["说得真好！🎉", "太棒了！", "好厉害！"],
     "encourage_retry": ["再听一次好吗？", "我们慢慢说！"],
     "listen_prompt": "告诉米娜！"
+  },
+  "family_copy": {
+    "say_together": "一起说！ — Say it together!",
+    "confident_hint": "Ask in Mandarin and let the story do the rest.",
+    "learning_intro": "New to Mandarin? Follow along — the script, sound and meaning are all here.",
+    "coach_tip": "Tap play, listen once, then say it slowly together. Any answer counts.",
+    "response_label": "If they answer, you can say"
   },
   "placeholder_phrases": {
     "What colour is this?": "这是什么颜色？",

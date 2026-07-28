@@ -1,12 +1,26 @@
 /// Profile — child profiles, active selection, and language at a glance.
+/// F10: north-star progress (family moments / week) + saved memories with
+/// a real delete — no scores, no streaks, no proficiency claims.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // F10 — non-fatal; the screen renders fine with zero data.
+    context.read<AppState>().refreshProgress();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -117,6 +131,133 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 28),
 
+              // F10 — the north-star metric, and nothing else (hard rule 6)
+              TCard(
+                radius: 26,
+                gradient: TGradients.night,
+                shadows: TShadows.glowTeal,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'THIS WEEK',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white54,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${app.familyMomentsThisWeek}',
+                          style: const TextStyle(
+                            fontSize: 44,
+                            height: 1.0,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              'family language moments\ncompleted together',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white70,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // F10 — saved memories (consent-gated) with delete
+              if (app.memories.isNotEmpty) ...[
+                const Text(
+                  'Saved memories',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: TColors.inkSoft,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...app.memories.map((m) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: TCard(
+                        radius: 22,
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            const Text('📖',
+                                style: TextStyle(fontSize: 22)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    (m['title'] as String?)
+                                                ?.isNotEmpty ==
+                                            true
+                                        ? m['title'] as String
+                                        : 'A story you shared',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      color: TColors.ink,
+                                    ),
+                                  ),
+                                  if ((m['target_phrase'] as String?)
+                                          ?.isNotEmpty ==
+                                      true)
+                                    Text(
+                                      m['target_phrase'] as String,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: TColors.inkFaint,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => _confirmDeleteMemory(
+                                  context, app, m['id'] as String? ?? ''),
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: TColors.blush,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: TColors.coral,
+                                    size: 20),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+                const SizedBox(height: 18),
+              ],
+
               // About
               TCard(
                 radius: 26,
@@ -154,6 +295,39 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _confirmDeleteMemory(
+      BuildContext context, AppState app, String memoryId) {
+    if (memoryId.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24)),
+        title: const Text('Delete this memory?',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        content: const Text(
+            'The memory and its story audio are removed. This cannot be undone.',
+            style: TextStyle(fontSize: 13, color: TColors.inkSoft)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Keep it',
+                style: TextStyle(color: TColors.inkFaint)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              app.deleteMemory(memoryId);
+            },
+            child: const Text('Delete',
+                style: TextStyle(
+                    color: TColors.coral, fontWeight: FontWeight.w800)),
+          ),
+        ],
       ),
     );
   }

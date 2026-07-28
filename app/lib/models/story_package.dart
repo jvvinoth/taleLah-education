@@ -229,6 +229,7 @@ class ApprovedScene {
 /// F4 — the full approved story + media manifest for child mode.
 class ApprovedStory {
   final String packageId;
+  final String locale;
   final String title;
   final String titleTargetLang;
   final List<ApprovedScene> scenes;
@@ -236,10 +237,13 @@ class ApprovedStory {
   final String missionTargetLang;
   final String handoffPrompt;
   final String handoffPromptTargetLang;
+  final String handoffResponseSuggestion;
+  final String familyVoiceMode; // F9 — confident_speaker | learning_parent
   final List<MediaAsset> manifest;
 
   ApprovedStory({
     required this.packageId,
+    this.locale = 'ta-SG',
     this.title = '',
     this.titleTargetLang = '',
     this.scenes = const [],
@@ -247,6 +251,8 @@ class ApprovedStory {
     this.missionTargetLang = '',
     this.handoffPrompt = '',
     this.handoffPromptTargetLang = '',
+    this.handoffResponseSuggestion = '',
+    this.familyVoiceMode = 'confident_speaker',
     this.manifest = const [],
   });
 
@@ -262,8 +268,11 @@ class ApprovedStory {
     final mission = story['room_mission'] as Map<String, dynamic>? ?? {};
     final handoff = story['family_handoff'] as Map<String, dynamic>? ?? {};
     final media = pkg['media'] as Map<String, dynamic>? ?? {};
+    final language = pkg['language'] as Map<String, dynamic>? ?? {};
+    final familyVoice = pkg['family_voice'] as Map<String, dynamic>? ?? {};
     return ApprovedStory(
       packageId: pkg['id'] as String? ?? '',
+      locale: language['locale'] as String? ?? 'ta-SG',
       title: story['title'] as String? ?? '',
       titleTargetLang: story['title_target_lang'] as String? ?? '',
       scenes: (story['scenes'] as List<dynamic>?)
@@ -275,6 +284,11 @@ class ApprovedStory {
       handoffPrompt: handoff['prompt'] as String? ?? '',
       handoffPromptTargetLang:
           handoff['prompt_target_lang'] as String? ?? '',
+      handoffResponseSuggestion:
+          handoff['response_suggestion'] as String? ?? '',
+      familyVoiceMode: familyVoice['mode'] as String? ??
+          handoff['mode'] as String? ??
+          'confident_speaker',
       manifest: (media['manifest'] as List<dynamic>?)
               ?.map((e) => MediaAsset.fromJson(e as Map<String, dynamic>))
               .toList() ??

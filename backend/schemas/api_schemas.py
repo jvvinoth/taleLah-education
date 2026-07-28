@@ -188,6 +188,13 @@ class SessionSummary(BaseModel):
     completed_at: Optional[datetime] = None
 
 
+class MemorySaveRequest(BaseModel):
+    """F10 — saving a memory requires an explicit consent tick (default off)."""
+    session_id: str
+    consent: bool = False
+    note: str = ""
+
+
 # ── Generation ─────────────────────────────────────────────────────────────
 
 class GenerationStatus(BaseModel):

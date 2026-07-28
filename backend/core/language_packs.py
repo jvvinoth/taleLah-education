@@ -59,6 +59,16 @@ class ChildCopy(BaseModel):
     listen_prompt: str = ""
 
 
+class FamilyCopy(BaseModel):
+    """F9 — parent-facing handoff copy. Lives in the pack so no locale
+    (or language-name) literal ever appears in application code."""
+    say_together: str = ""
+    confident_hint: str = ""
+    learning_intro: str = ""
+    coach_tip: str = ""
+    response_label: str = ""
+
+
 class LanguagePack(BaseModel):
     """A versioned language pack — the single source of locale behaviour."""
     pack_version: str
@@ -71,6 +81,7 @@ class LanguagePack(BaseModel):
     expected_intents: dict[str, list[str]] = {}
     speech: SpeechConfig = SpeechConfig()
     child_copy: ChildCopy = ChildCopy()
+    family_copy: FamilyCopy = FamilyCopy()
     placeholder_phrases: dict[str, str] = {}
 
 
