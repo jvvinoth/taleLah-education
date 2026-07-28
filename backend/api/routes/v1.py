@@ -407,30 +407,35 @@ async def _regen_scene(pkg, scene_index: int, llm) -> None:
     scene = pkg.story.scenes[scene_index]
     facts_text = "\n".join(f"- {f.text}" for f in pkg.moment_facts)
     plan = pkg.learning_plan
+    regenerated = False
     if llm:
-        result = await llm.generate_json(
-            prompt=(
-                f"Story title: {pkg.story.title}\n"
-                f"Child's real activity:\n{facts_text}\n"
-                f"Target words: {plan.target_words if plan else []}\n\n"
-                f"Current scene {scene_index} text: {scene.narration}\n"
-                f"Write a DIFFERENT version of this scene (same position in the story)."
-            ),
-            system=REGEN_SYSTEM_PROMPTS["scene"],
-        )
-        scene.narration = result.get("narration", scene.narration)
-        if result.get("interaction_type") == "speak":
-            scene.interaction = SceneInteraction(
-                type=InteractionType.SPEAK,
-                expected_intent=result.get("expected_intent", ""),
+        try:
+            result = await llm.generate_json(
+                prompt=(
+                    f"Story title: {pkg.story.title}\n"
+                    f"Child's real activity:\n{facts_text}\n"
+                    f"Target words: {plan.target_words if plan else []}\n\n"
+                    f"Current scene {scene_index} text: {scene.narration}\n"
+                    f"Write a DIFFERENT version of this scene (same position in the story)."
+                ),
+                system=REGEN_SYSTEM_PROMPTS["scene"],
             )
-        else:
-            scene.interaction = SceneInteraction(
-                type=InteractionType.CHOICE,
-                options=result.get("options", scene.interaction.options) or ["Continue"],
-            )
-    else:
-        # Offline fallback — deterministic variant so the flow stays demoable
+            scene.narration = result.get("narration", scene.narration)
+            if result.get("interaction_type") == "speak":
+                scene.interaction = SceneInteraction(
+                    type=InteractionType.SPEAK,
+                    expected_intent=result.get("expected_intent", ""),
+                )
+            else:
+                scene.interaction = SceneInteraction(
+                    type=InteractionType.CHOICE,
+                    options=result.get("options", scene.interaction.options) or ["Continue"],
+                )
+            regenerated = True
+        except Exception as e:
+            logger.error(f"[F2] Scene regen LLM failed, using fallback: {e}")
+    if not regenerated:
+        # Offline/LLM-failure fallback — deterministic variant so the flow stays demoable
         base = scene.narration.removeprefix("In a new telling, ")
         scene.narration = f"In a new telling, {base}"
     scene.narration_target_lang = ""  # force Guardian re-translation
@@ -438,19 +443,24 @@ async def _regen_scene(pkg, scene_index: int, llm) -> None:
 
 async def _regen_mission(pkg, llm) -> None:
     mission = pkg.story.room_mission
+    regenerated = False
     if llm:
-        facts_text = "\n".join(f"- {f.text}" for f in pkg.moment_facts)
-        result = await llm.generate_json(
-            prompt=(
-                f"Story title: {pkg.story.title}\n"
-                f"Child's real activity:\n{facts_text}\n"
-                f"Current mission: {mission.instruction}\n"
-                f"Write a DIFFERENT safe room mission for this story."
-            ),
-            system=REGEN_SYSTEM_PROMPTS["mission"],
-        )
-        mission.instruction = result.get("room_mission", mission.instruction)
-    else:
+        try:
+            facts_text = "\n".join(f"- {f.text}" for f in pkg.moment_facts)
+            result = await llm.generate_json(
+                prompt=(
+                    f"Story title: {pkg.story.title}\n"
+                    f"Child's real activity:\n{facts_text}\n"
+                    f"Current mission: {mission.instruction}\n"
+                    f"Write a DIFFERENT safe room mission for this story."
+                ),
+                system=REGEN_SYSTEM_PROMPTS["mission"],
+            )
+            mission.instruction = result.get("room_mission", mission.instruction)
+            regenerated = True
+        except Exception as e:
+            logger.error(f"[F2] Mission regen LLM failed, using fallback: {e}")
+    if not regenerated:
         base = mission.instruction.removeprefix("New mission: ")
         mission.instruction = f"New mission: {base}"
     mission.safety_validated = False
@@ -459,20 +469,25 @@ async def _regen_mission(pkg, llm) -> None:
 
 async def _regen_handoff(pkg, llm) -> None:
     handoff = pkg.story.family_handoff
+    regenerated = False
     if llm:
-        result = await llm.generate_json(
-            prompt=(
-                f"Story title: {pkg.story.title}\n"
-                f"Current handoff prompt: {handoff.prompt}\n"
-                f"Write a DIFFERENT family handoff for this story."
-            ),
-            system=REGEN_SYSTEM_PROMPTS["handoff"],
-        )
-        handoff.prompt = result.get("family_handoff_prompt", handoff.prompt)
-        handoff.response_suggestion = result.get(
-            "family_response_suggestion", handoff.response_suggestion
-        )
-    else:
+        try:
+            result = await llm.generate_json(
+                prompt=(
+                    f"Story title: {pkg.story.title}\n"
+                    f"Current handoff prompt: {handoff.prompt}\n"
+                    f"Write a DIFFERENT family handoff for this story."
+                ),
+                system=REGEN_SYSTEM_PROMPTS["handoff"],
+            )
+            handoff.prompt = result.get("family_handoff_prompt", handoff.prompt)
+            handoff.response_suggestion = result.get(
+                "family_response_suggestion", handoff.response_suggestion
+            )
+            regenerated = True
+        except Exception as e:
+            logger.error(f"[F2] Handoff regen LLM failed, using fallback: {e}")
+    if not regenerated:
         base = handoff.prompt.removeprefix("Try this instead: ")
         handoff.prompt = f"Try this instead: {base}"
     handoff.prompt_target_lang = ""
