@@ -38,6 +38,7 @@ from ...schemas.story_package import (
     InputType,
     InteractionType,
     Moment,
+    MomentFact,
     SceneInteraction,
     StorySession,
     StoryStatus,
@@ -162,6 +163,18 @@ async def capture_moment_text(data: MomentCreateText):
 
 
 # ── Story Package Generation ──────────────────────────────────────────────
+
+@router.get("/packages", response_model=list[StoryPackageResponse])
+async def list_packages(child_profile_id: str = "", status: str = ""):
+    """Story library — all packages, newest first, optional filters."""
+    pkgs = orchestrator.list_packages()
+    if child_profile_id:
+        pkgs = [p for p in pkgs if p.child_profile_id == child_profile_id]
+    if status:
+        pkgs = [p for p in pkgs if p.status.value == status]
+    pkgs.sort(key=lambda p: p.created_at, reverse=True)
+    return [StoryPackageResponse.from_package(p) for p in pkgs]
+
 
 @router.post("/packages/generate", response_model=StoryPackageResponse)
 async def generate_package(moment_id: str, locale: str = "ta-SG"):

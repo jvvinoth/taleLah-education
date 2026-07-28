@@ -262,4 +262,21 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  /// Load an already-approved package into [approvedStory] — used by the
+  /// story library replay and by review-screen approvals that bypass
+  /// [approvePackage].
+  Future<bool> loadApprovedStory(String packageId) async {
+    try {
+      final detail = await api.getPackageDetail(packageId);
+      final pkg = detail['package'] as Map<String, dynamic>?;
+      if (pkg == null) return false;
+      _approvedStory = ApprovedStory.fromPackageJson(pkg);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Approved story load failed: $e');
+      return false;
+    }
+  }
 }

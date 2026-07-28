@@ -6,6 +6,8 @@ import '../theme/app_theme.dart';
 import 'child_session.dart';
 import 'family_mode.dart';
 import 'parent_review.dart';
+import 'profile_screen.dart';
+import 'stories_library.dart';
 
 class ParentHomeScreen extends StatefulWidget {
   const ParentHomeScreen({super.key});
@@ -888,6 +890,13 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   }
 
   void _onNavTap(int i, AppState app) {
+    if (i == 1) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const StoriesLibraryScreen()),
+      );
+      return;
+    }
     if (i == 2) {
       Navigator.push(
         context,
@@ -895,9 +904,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       );
       return;
     }
-    if (i == 1 || i == 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Coming soon in Sprint 2 ✨')),
+    if (i == 3) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ProfileScreen()),
       );
       return;
     }
@@ -951,6 +961,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       ),
     );
     if (approved == true && mounted) {
+      // Review screen approves via raw API — load the approved package so
+      // child mode gets the real scenes + F4 audio manifest.
+      await app.loadApprovedStory(pkg.id);
+      if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ChildSessionScreen()),

@@ -140,6 +140,22 @@ class ApiClient {
     return jsonDecode(res.body);
   }
 
+  /// Story library — all packages, newest first.
+  Future<List<StoryPackageSummary>> listPackages(
+      {String childProfileId = ''}) async {
+    final query = childProfileId.isEmpty
+        ? ''
+        : '?child_profile_id=$childProfileId';
+    final res = await _client.get(
+      Uri.parse('$baseUrl/packages$query'),
+      headers: _headers,
+    );
+    final list = jsonDecode(res.body) as List;
+    return list
+        .map((e) => StoryPackageSummary.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<void> approvePackage(String packageId) async {
     await _client.post(
       Uri.parse('$baseUrl/packages/$packageId/approve'),
