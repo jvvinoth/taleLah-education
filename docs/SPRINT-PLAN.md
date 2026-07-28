@@ -12,10 +12,10 @@
 |---|---|---|
 | Sprint 0 | Foundation — repo, specs, FastAPI shell, Flutter shell, accounts | ✅ Done |
 | Sprint 1 | Real pipeline — 6 Qwen agents, SSE progress, Sarvam/Google TTS, premium UI + mobile frame | ✅ Done |
-| Sprint 2 | Parent trust loop — language packs, review/edit, clarification, TTS pre-gen | 🔜 Next |
-| Sprint 3 | Child voice loop — voice/photo capture, bounded speech turn | Pending |
-| Sprint 4 | Child & family experience — lockdown, mission, handoff modes, memory | Pending |
-| Sprint 5 | Evidence & demo — pack-swap showpiece, eval passes, demo cut | Pending |
+| Sprint 2 | Parent trust loop — language packs, review/edit, clarification, TTS pre-gen | ✅ Done |
+| Sprint 3 | Child voice loop — voice/photo capture, bounded speech turn | ✅ Done |
+| Sprint 4 | Child & family experience — lockdown, mission, handoff modes, memory | ✅ Done |
+| Sprint 5 | Evidence & demo — pack-swap showpiece, eval passes, demo cut | ✅ Done |
 
 ---
 
