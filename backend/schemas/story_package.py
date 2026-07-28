@@ -173,6 +173,9 @@ class StoryPackage(BaseModel):
     validation: Validation = Validation()
     provenance: Provenance = Provenance()
 
+    # Parent review & edit (F2): single-component regenerations, hard cap 5
+    regeneration_count: int = 0
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

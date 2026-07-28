@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -94,6 +94,7 @@ class StoryPackageResponse(BaseModel):
     has_handoff: bool = False
     validation_language: str = "pending"
     validation_safety: str = "pending"
+    regeneration_count: int = 0
     created_at: datetime
 
     @classmethod
@@ -111,6 +112,7 @@ class StoryPackageResponse(BaseModel):
             has_handoff=bool(pkg.story.family_handoff.prompt),
             validation_language=pkg.validation.language.value,
             validation_safety=pkg.validation.safety.value,
+            regeneration_count=pkg.regeneration_count,
             created_at=pkg.created_at,
         )
 
@@ -125,6 +127,30 @@ class StoryPackageApproval(BaseModel):
     edited_facts: Optional[list[dict]] = None
     edited_target_words: Optional[list[str]] = None
     notes: str = ""
+
+
+# ── Parent Review & Edit (F2) ──────────────────────────────────────────────
+
+class FactsUpdate(BaseModel):
+    """Parent-corrected moment facts — replaces the extracted set."""
+    facts: list[str] = Field(min_length=1, max_length=10)
+
+
+class TargetWordSwap(BaseModel):
+    """Swap one target word for another from the pack word bank."""
+    old_word: str
+    new_word: str
+
+
+class DifficultyUpdate(BaseModel):
+    """Adjust the learning plan difficulty level."""
+    level: ConfidenceLevel
+
+
+class RegenerateRequest(BaseModel):
+    """Regenerate a single story component — hard cap 5 per package."""
+    component: Literal["scene", "mission", "handoff"]
+    scene_index: int = Field(default=0, ge=0, le=3)
 
 
 # ── Session ────────────────────────────────────────────────────────────────

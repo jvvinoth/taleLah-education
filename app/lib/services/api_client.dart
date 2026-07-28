@@ -4,6 +4,15 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/story_package.dart';
 
+class ApiException implements Exception {
+  final int statusCode;
+  final String detail;
+  ApiException(this.statusCode, this.detail);
+
+  @override
+  String toString() => detail;
+}
+
 class ApiClient {
   final String baseUrl;
   final http.Client _client = http.Client();
@@ -137,6 +146,71 @@ class ApiClient {
       headers: _headers,
       body: jsonEncode({'approved': true}),
     );
+  }
+
+  // ── Parent Review & Edit (F2) ────────────────────────────────────
+
+  Map<String, dynamic> _jsonOrThrow(http.Response res) {
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode >= 400) {
+      throw ApiException(
+          res.statusCode, data['detail']?.toString() ?? res.body);
+    }
+    return data;
+  }
+
+  Future<Map<String, dynamic>> editFacts(
+      String packageId, List<String> facts) async {
+    final res = await _client.patch(
+      Uri.parse('$baseUrl/packages/$packageId/facts'),
+      headers: _headers,
+      body: jsonEncode({'facts': facts}),
+    );
+    return _jsonOrThrow(res);
+  }
+
+  Future<Map<String, dynamic>> swapTargetWord(
+      String packageId, String oldWord, String newWord) async {
+    final res = await _client.patch(
+      Uri.parse('$baseUrl/packages/$packageId/target-word'),
+      headers: _headers,
+      body: jsonEncode({'old_word': oldWord, 'new_word': newWord}),
+    );
+    return _jsonOrThrow(res);
+  }
+
+  Future<Map<String, dynamic>> setDifficulty(
+      String packageId, String level) async {
+    final res = await _client.patch(
+      Uri.parse('$baseUrl/packages/$packageId/difficulty'),
+      headers: _headers,
+      body: jsonEncode({'level': level}),
+    );
+    return _jsonOrThrow(res);
+  }
+
+  Future<Map<String, dynamic>> regenerateComponent(
+    String packageId,
+    String component, {
+    int sceneIndex = 0,
+  }) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/packages/$packageId/regenerate'),
+      headers: _headers,
+      body: jsonEncode({'component': component, 'scene_index': sceneIndex}),
+    );
+    return _jsonOrThrow(res);
+  }
+
+  Future<List<Map<String, dynamic>>> getWordBank(String locale) async {
+    final res = await _client.get(
+      Uri.parse('$baseUrl/packs/$locale/word-bank'),
+      headers: _headers,
+    );
+    final data = _jsonOrThrow(res);
+    return (data['word_bank'] as List)
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
   }
 
   // ── SSE Stream ────────────────────────────────────────────────────────

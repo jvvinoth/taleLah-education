@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import 'child_session.dart';
 import 'family_mode.dart';
+import 'parent_review.dart';
 
 class ParentHomeScreen extends StatefulWidget {
   const ParentHomeScreen({super.key});
@@ -648,6 +649,36 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             ),
           ],
           const SizedBox(height: 16),
+          // Review & Edit (F2) — opens the parent review workflow
+          GestureDetector(
+            onTap: () => _openReview(app),
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: TColors.lavender,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.tune_rounded,
+                        color: TColors.violetDeep, size: 20),
+                    SizedBox(width: 6),
+                    Text(
+                      'Review & Edit',
+                      style: TextStyle(
+                        color: TColors.violetDeep,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
           GestureDetector(
             onTap: () => _approveAndStart(app),
             child: Container(
@@ -813,6 +844,23 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       context,
       MaterialPageRoute(builder: (_) => const ChildSessionScreen()),
     );
+  }
+
+  Future<void> _openReview(AppState app) async {
+    final pkg = app.latestPackage;
+    if (pkg == null) return;
+    final approved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ParentReviewScreen(packageId: pkg.id),
+      ),
+    );
+    if (approved == true && mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ChildSessionScreen()),
+      );
+    }
   }
 
   void _showCreateProfileDialog(AppState app) {
