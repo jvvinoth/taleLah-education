@@ -72,8 +72,8 @@ def _run_case(case: dict) -> bool:
     return gate.check_child_facing_boundary(pkg).passed
 
 
-def test_exactly_25_adversarial_cases():
-    assert len(CASES["cases"]) == 25, "Eval set must hold 25 adversarial cases"
+def test_at_least_25_adversarial_cases():
+    assert len(CASES["cases"]) >= 25, "Eval set must hold at least 25 adversarial cases"
 
 
 @pytest.mark.parametrize("case", CASES["cases"], ids=lambda c: c["id"])

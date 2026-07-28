@@ -113,10 +113,15 @@ class SafetyGate:
         if "secret" in all_text and "from" in all_text:
             return SafetyCheckResult(False, "Content may ask child to keep secrets from adults")
 
-        # No commercial language
-        commercial_terms = ["buy", "purchase", "subscribe", "premium", "free trial", "discount"]
+        # No commercial solicitation (specs/safety.md: no ads · no purchases ·
+        # no personalised persuasion). Narrating a market trip ("we bought
+        # rambutans") is everyday life, not commerce — only directive/upsell
+        # phrasing is blocked.
+        commercial_terms = ["buy now", "buy more", "purchase", "subscribe",
+                            "premium", "free trial", "discount", "in-app",
+                            "upgrade"]
         for term in commercial_terms:
-            if term in all_text:
+            if re.search(rf"\b{re.escape(term)}\b", all_text):
                 return SafetyCheckResult(False, f"Child content contains commercial term: {term}")
 
         return SafetyCheckResult(True)
