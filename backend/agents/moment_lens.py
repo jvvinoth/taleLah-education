@@ -43,6 +43,23 @@ DEFAULT_QUESTION = (
     "and where did it happen?"
 )
 
+# F3 — pronouns/fillers that carry no story content. A moment made only of
+# these (e.g. "she did the thing with the stuff") must always pause,
+# regardless of how confident the LLM felt about extracting them.
+VAGUE_WORDS = frozenset(
+    "i we he she it they you a an the this that these those there "
+    "thing things stuff something anything it's did do does done was were is "
+    "are be been being had has have with and or but at in on of to for from "
+    "again today yesterday tonight now then just really very some one "
+    "happened went got made".split()
+)
+
+
+def _is_vague(moment_text: str) -> bool:
+    """True when the description has no concrete content word to build on."""
+    words = [w.strip(".,!?'\"").lower() for w in moment_text.split()]
+    return not any(w and w not in VAGUE_WORDS for w in words)
+
 
 def _clamp(value: float) -> float:
     return max(0.0, min(1.0, value))
@@ -58,7 +75,7 @@ class MomentLensAgent(BaseAgent):
         """F3 — decide whether the pipeline should pause for one parent answer."""
         if llm_question:
             return llm_question
-        if len(moment_text.split()) < 4:
+        if len(moment_text.split()) < 4 or _is_vague(moment_text):
             return DEFAULT_QUESTION
         if not facts or max(f.confidence for f in facts) < CLARIFY_THRESHOLD:
             return DEFAULT_QUESTION
