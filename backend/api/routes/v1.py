@@ -263,6 +263,30 @@ async def get_package_trace(package_id: str):
     return {"package_id": package_id, "trace": trace}
 
 
+@router.get("/debug/llm")
+async def debug_llm():
+    """Diagnostic: which LLM config is live + a 1-token connectivity ping.
+    Never exposes the API key. Safe for the hackathon demo."""
+    weaver = orchestrator._agents.get(AgentName.STORY_WEAVER)
+    llm = getattr(weaver, "llm", None) if weaver else None
+    info: dict = {
+        "agent_registered": weaver is not None,
+        "llm_configured": llm is not None,
+        "base_url": getattr(llm, "base_url", None),
+        "model": getattr(llm, "model", None),
+        "api_key_prefix": (getattr(llm, "api_key", "") or "")[:6],
+    }
+    if llm:
+        try:
+            reply = await llm.generate(prompt="Say OK", max_tokens=5)
+            info["ping"] = "ok"
+            info["reply"] = reply[:40]
+        except Exception as e:
+            info["ping"] = "failed"
+            info["error"] = str(e)[:300]
+    return info
+
+
 @router.post("/packages/{package_id}/approve", response_model=StoryPackageResponse)
 async def approve_package(package_id: str, data: StoryPackageApproval):
     if not data.approved:
