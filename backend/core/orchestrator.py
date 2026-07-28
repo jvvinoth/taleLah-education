@@ -17,6 +17,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, AsyncGenerator, Optional
 
+from .persistence import persistence
 from ..schemas.story_package import (
     MomentFact,
     StoryPackage,
@@ -177,6 +178,7 @@ class WorkflowOrchestrator:
         self._traces[pkg_id] = [
             TraceEntry("orchestrator", "created", f"Package {pkg_id} created")
         ]
+        self.persist(pkg)
         logger.info(f"Created StoryPackage {pkg_id}")
         return pkg
 
@@ -186,6 +188,15 @@ class WorkflowOrchestrator:
     def get_trace(self, package_id: str) -> list[dict]:
         """Return the inspectable trace for a package."""
         return [e.to_dict() for e in self._traces.get(package_id, [])]
+
+    def persist(self, pkg: StoryPackage) -> None:
+        """Mirror the package + its trace to Neon (write-through, fire-and-forget)."""
+        persistence.save("story_packages", pkg.id, pkg)
+        persistence.save(
+            "traces",
+            pkg.id,
+            {"entries": [e.to_dict() for e in self._traces.get(pkg.id, [])]},
+        )
 
     def _transition(self, pkg: StoryPackage, new_status: StoryStatus) -> None:
         """Validate and execute a state transition."""
@@ -200,6 +211,7 @@ class WorkflowOrchestrator:
         self._traces[pkg.id].append(
             TraceEntry("orchestrator", "transition", f"{old.value} → {new_status.value}")
         )
+        self.persist(pkg)
 
     async def run_generation(self, package_id: str, start_index: int = 0) -> StoryPackage:
         """
@@ -248,6 +260,7 @@ class WorkflowOrchestrator:
                 self._traces[pkg.id].append(
                     TraceEntry(agent_name.value, "completed", f"{agent_name.value} done")
                 )
+                self.persist(pkg)  # capture the agent's output
                 await self._emit(package_id, {
                     "type": "agent_completed",
                     "agent": agent_name.value,
@@ -273,6 +286,7 @@ class WorkflowOrchestrator:
                         "status": StoryStatus.NEEDS_CLARIFICATION.value,
                         "progress_pct": round((1 / total) * 100, 1),
                     })
+                    self.persist(pkg)
                     logger.info(f"Pipeline paused for clarification: {package_id}")
                     return pkg
             except Exception as e:
@@ -303,6 +317,7 @@ class WorkflowOrchestrator:
         self._traces[pkg.id].append(
             TraceEntry("orchestrator", "generation_complete", "Ready for parent review")
         )
+        self.persist(pkg)
         await self._emit(package_id, {
             "type": "generation_complete",
             "package_id": package_id,
@@ -330,6 +345,7 @@ class WorkflowOrchestrator:
         self._traces[pkg.id].append(
             TraceEntry("orchestrator", "clarified", "Parent answered clarification")
         )
+        self.persist(pkg)
         # Resume after Moment Lens (idempotent — agent 1 already ran)
         return await self.run_generation(package_id, start_index=1)
 
@@ -347,6 +363,7 @@ class WorkflowOrchestrator:
         self._traces[pkg.id].append(
             TraceEntry("orchestrator", "approved", "Parent approved")
         )
+        self.persist(pkg)
         return pkg
 
     async def start_session(self, package_id: str) -> StoryPackage:
@@ -377,6 +394,7 @@ class WorkflowOrchestrator:
         self._traces[pkg.id].append(
             TraceEntry("orchestrator", "session_complete", "Session completed")
         )
+        self.persist(pkg)
         return pkg
 
     def list_packages(self) -> list[StoryPackage]:

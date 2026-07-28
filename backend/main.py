@@ -16,6 +16,7 @@ from .api.routes.v1 import router as v1_router
 from .core.config import settings
 from .core.language_packs import pack_loader
 from .core.orchestrator import AgentName, orchestrator
+from .core.persistence import persistence
 
 # Configure logging
 logging.basicConfig(
@@ -54,6 +55,11 @@ async def startup():
 
     # ── Load language packs (F1 — all locale behaviour lives in packs/) ────
     pack_loader.load_all()
+
+    # ── Neon persistence — hydrate stores so state survives redeploys ─────
+    from .api.routes.v1 import hydrate_stores
+    if await persistence.init():
+        await hydrate_stores()
 
     # ── Initialize providers ──────────────────────────────────────────────
     from .adapters.dashscope_provider import DashScopeLLMProvider, DashScopeVisionProvider
@@ -124,6 +130,11 @@ async def startup():
     logger.info("✅ All 6 agents registered with real providers")
     logger.info(f"📁 Language packs: {', '.join(pack_loader.available_locales())}")
     logger.info(f"🔗 API docs: http://localhost:{settings.port}/docs")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await persistence.close()
 
 
 @app.get("/")

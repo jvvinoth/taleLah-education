@@ -14,6 +14,7 @@ from fastapi.responses import Response, StreamingResponse
 from ...core.config import settings
 from ...core.language_packs import pack_loader
 from ...core.orchestrator import AgentName, TraceEntry, orchestrator
+from ...core.persistence import persistence
 from ...core.speech import match_intent
 from ...safety.gate import safety_gate
 from ...schemas.api_schemas import (
@@ -47,6 +48,7 @@ from ...schemas.story_package import (
     MomentFact,
     SavedMemory,
     SceneInteraction,
+    StoryPackage,
     StorySession,
     StoryStatus,
 )
@@ -66,6 +68,49 @@ _memories: dict[str, SavedMemory] = {}
 
 # F4 — pre-generated audio blobs: package_id → {filename: bytes}
 _media_blobs: dict[str, dict[str, bytes]] = {}
+
+
+async def hydrate_stores() -> None:
+    """Reload persisted state from Neon on startup (write-through cache).
+    Any failure is non-fatal — the app simply starts with empty stores."""
+    if not persistence.enabled:
+        return
+    try:
+        _adults.update(await persistence.fetch_all("adults"))
+        for k, v in (await persistence.fetch_all("child_profiles")).items():
+            _profiles[k] = ChildProfile.model_validate(v)
+        for k, v in (await persistence.fetch_all("family_speakers")).items():
+            _speakers[k] = FamilySpeaker.model_validate(v)
+        for k, v in (await persistence.fetch_all("moments")).items():
+            _moments[k] = Moment.model_validate(v)
+        for k, v in (await persistence.fetch_all("story_sessions")).items():
+            _sessions[k] = StorySession.model_validate(v)
+        for k, v in (await persistence.fetch_all("saved_memories")).items():
+            _memories[k] = SavedMemory.model_validate(v)
+        _media_blobs.update(await persistence.fetch_blobs())
+
+        packages = await persistence.fetch_all("story_packages")
+        traces = await persistence.fetch_all("traces")
+        for pid, data in packages.items():
+            orchestrator._packages[pid] = StoryPackage.model_validate(data)
+            restored = []
+            for e in traces.get(pid, {}).get("entries", []):
+                entry = TraceEntry(e["agent"], e["status"], e.get("detail", ""))
+                try:
+                    entry.timestamp = datetime.fromisoformat(e["timestamp"])
+                except (KeyError, ValueError):
+                    pass
+                restored.append(entry)
+            orchestrator._traces[pid] = restored
+
+        logger.info(
+            f"💾 Hydrated from Neon: {len(_adults)} adults, "
+            f"{len(_profiles)} profiles, {len(_moments)} moments, "
+            f"{len(packages)} packages, {len(_sessions)} sessions, "
+            f"{len(_memories)} memories, {len(_media_blobs)} media manifests"
+        )
+    except Exception as e:
+        logger.warning(f"💾 Hydration failed ({e}) — starting with empty stores")
 
 # F6 — lazy ASR provider registry (provider name → adapter)
 _asr_providers: dict[str, object] = {}
@@ -124,6 +169,7 @@ async def register(data: AdultRegister):
         "email": data.email,
         "display_name": data.display_name,
     }
+    persistence.save("adults", adult_id, _adults[adult_id])
     return TokenResponse(access_token=f"demo_{adult_id}", adult_id=adult_id)
 
 
@@ -151,6 +197,7 @@ async def create_profile(data: ChildProfileCreate, adult_id: str = "demo"):
         interests=data.interests,
     )
     _profiles[profile_id] = profile
+    persistence.save("child_profiles", profile_id, profile)
     return ChildProfileResponse(
         id=profile.id,
         alias=profile.alias,
@@ -189,6 +236,7 @@ async def set_speaker(profile_id: str, mode: FamilyVoiceMode = FamilyVoiceMode.C
         relationship_label=label,
         mode=mode,
     )
+    persistence.save("family_speakers", speaker_id, _speakers[speaker_id])
     return {"speaker_id": speaker_id, "mode": mode.value, "label": label}
 
 
@@ -207,6 +255,7 @@ async def capture_moment_text(data: MomentCreateText):
         status="captured",
     )
     _moments[moment_id] = moment
+    persistence.save("moments", moment_id, moment)
     return MomentResponse(
         id=moment.id,
         child_profile_id=moment.child_profile_id,
@@ -267,6 +316,7 @@ async def capture_moment_voice(
         status="captured",
     )
     _moments[moment_id] = moment
+    persistence.save("moments", moment_id, moment)
     return MomentResponse(
         id=moment.id,
         child_profile_id=moment.child_profile_id,
@@ -321,6 +371,7 @@ async def capture_moment_photo(
         status="captured",
     )
     _moments[moment_id] = moment
+    persistence.save("moments", moment_id, moment)
     return MomentResponse(
         id=moment.id,
         child_profile_id=moment.child_profile_id,
@@ -518,6 +569,7 @@ async def approve_package(package_id: str, data: StoryPackageApproval):
         try:
             blobs = await fvd.pregenerate_manifest(pkg)
             _media_blobs[pkg.id] = blobs
+            persistence.save_blobs(pkg.id, blobs)
         except Exception as e:
             logger.error(f"[F4] TTS pre-generation failed for {pkg.id}: {e}")
     return StoryPackageResponse.from_package(pkg)
@@ -583,6 +635,9 @@ def _trace_edit(package_id: str, status: str, detail: str) -> None:
     orchestrator._traces.setdefault(package_id, []).append(
         TraceEntry("parent_edit", status, detail)
     )
+    pkg = orchestrator.get_package(package_id)
+    if pkg is not None:
+        orchestrator.persist(pkg)
 
 
 @router.patch("/packages/{package_id}/facts")
@@ -842,6 +897,7 @@ async def start_session(data: SessionStart):
         id=session_id,
         story_package_id=data.story_package_id,
     )
+    persistence.save("story_sessions", session_id, _sessions[session_id])
     return {
         "session_id": session_id,
         "package": pkg.model_dump(),
@@ -857,6 +913,7 @@ async def complete_session(session_id: str):
 
     pkg = await orchestrator.complete_session(session.story_package_id)
     session.completed_at = datetime.utcnow()
+    persistence.save("story_sessions", session_id, session)
 
     return SessionSummary(
         session_id=session.id,
@@ -883,6 +940,7 @@ async def session_event(session_id: str, kind: str = Form(...)):
         session.handoff_completed = True
     else:
         raise HTTPException(422, f"Unknown session event '{kind}'")
+    persistence.save("story_sessions", session_id, session)
     return {
         "session_id": session_id,
         "mission_completed": session.mission_completed,
@@ -949,6 +1007,7 @@ async def speech_turn(
     attempt = max(1, attempt)
     if result.matched:
         session.speech_turn_completed = True
+        persistence.save("story_sessions", session_id, session)
         next_action = "celebrate"
     elif attempt < max_attempts:
         next_action = "retry_slower"
@@ -1006,6 +1065,7 @@ async def speech_fallback(session_id: str, data: SpeechFallbackChoice):
 
     session.speech_turn_completed = True
     session.fallback_events += 1
+    persistence.save("story_sessions", session_id, session)
     _trace_edit(
         session.story_package_id,
         "speech_fallback",
@@ -1044,6 +1104,7 @@ async def save_memory(data: MemorySaveRequest):
         note=data.note,
     )
     _memories[memory_id] = memory
+    persistence.save("saved_memories", memory_id, memory)
     return memory.model_dump()
 
 
@@ -1065,6 +1126,9 @@ async def delete_memory(memory_id: str):
     if not memory:
         raise HTTPException(404, "Memory not found")
     media_purged = _media_blobs.pop(memory.story_package_id, None) is not None
+    persistence.delete("saved_memories", memory_id)
+    if media_purged:
+        persistence.delete_blobs(memory.story_package_id)
     return {"deleted": memory_id, "media_purged": media_purged}
 
 
