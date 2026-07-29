@@ -1,0 +1,77 @@
+---
+// Hero — headline + CTA + phone mockup showing the locale's story language.
+import MinaLogo from './MinaLogo.astro';
+import type { SiteContent } from '../i18n';
+
+interface Props {
+  t: SiteContent;
+}
+const { t } = Astro.props;
+const m = t.mock;
+---
+
+<section class="hero">
+  <div class="wrap">
+    <div class="herogrid">
+      <div>
+        <div class="eyebrow">{t.hero.eyebrow}</div>
+        <h1 style="margin-top:22px">
+          {t.hero.titleA}<br /><em class="hl-swash">{t.hero.titleB}</em>
+        </h1>
+        <p class="lede" set:html={t.hero.lede} />
+        <div class="cta-row">
+          <a href="#try" class="btn coral lg">{t.hero.ctaPrimary}</a>
+          <a href="#how" class="btn ghost lg">{t.hero.ctaSecondary}</a>
+        </div>
+        <div class="trust-row">
+          {
+            t.hero.trust.map((item) => (
+              <span>
+                <span class="tick">✓</span> {item}
+              </span>
+            ))
+          }
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="blob"></div>
+        <div class="glyphs" aria-hidden="true">
+          <span class="g-ta" style="top:4%;left:6%">அ</span>
+          <span class="g-zh" style="top:12%;right:4%">好</span>
+          <span style="bottom:20%;right:0%">B</span>
+          <span class="g-ta" style="bottom:6%;left:12%">ம</span>
+          <span class="g-zh" style="top:46%;left:-2%">说</span>
+        </div>
+        <div class="phone">
+          <div class="sticker gold s1">{m.hero.stickerTop}</div>
+          <div class="sticker s2">{m.hero.stickerBottom}</div>
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="sbar"><span>7:04</span><span>5G ▮▮▮ 82%</span></div>
+            <div class="scr">
+              <div class="appbar">
+                <div class="applogo">TaleLah</div>
+                <span class="chip">{m.childChip}</span>
+              </div>
+              <div class="scene">
+                <MinaLogo size={66} />
+                <div>
+                  <div class:list={['mt-line', m.script]}>{m.hero.line}</div>
+                  <div class="rom">{m.hero.rom}</div>
+                  <div class="en">{m.hero.en}</div>
+                </div>
+              </div>
+              <div class="btn-mini coral">{m.hero.micBtn}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero .lede {
+    margin-top: 24px;
+  }
+</style>

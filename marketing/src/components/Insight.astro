@@ -1,0 +1,16 @@
+---
+// Insight — teal reframe band.
+import type { SiteContent } from '../i18n';
+interface Props { t: SiteContent }
+const { t } = Astro.props;
+---
+
+<section class="insight">
+  <div class="wrap reveal">
+    <div class="eyebrow">{t.insight.eyebrow}</div>
+    <h2 style="margin-top:16px;max-width:18ch;margin-left:auto;margin-right:auto">
+      {t.insight.title}
+    </h2>
+    <p set:html={t.insight.body} />
+  </div>
+</section>

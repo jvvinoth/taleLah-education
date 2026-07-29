@@ -1,0 +1,39 @@
+---
+// Full landing page for one locale — the single source both routes render.
+import Base from '../layouts/Base.astro';
+import Nav from './Nav.astro';
+import Hero from './Hero.astro';
+import Skyline from './Skyline.astro';
+import Problem from './Problem.astro';
+import Insight from './Insight.astro';
+import HowItWorks from './HowItWorks.astro';
+import ScreensGallery from './ScreensGallery.astro';
+import Difference from './Difference.astro';
+import Trust from './Trust.astro';
+import Languages from './Languages.astro';
+import BuiltWith from './BuiltWith.astro';
+import FinalCta from './FinalCta.astro';
+import { CONTENT, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const t = CONTENT[locale];
+---
+
+<Base locale={locale} title={t.meta.title} description={t.meta.description}>
+  <Nav locale={locale} t={t} />
+  <div id="top"></div>
+  <Hero t={t} />
+  <Skyline />
+  <Problem t={t} />
+  <Insight t={t} />
+  <HowItWorks t={t} />
+  <ScreensGallery t={t} />
+  <Difference t={t} />
+  <Trust t={t} />
+  <Languages t={t} />
+  <BuiltWith t={t} />
+  <FinalCta t={t} />
+</Base>

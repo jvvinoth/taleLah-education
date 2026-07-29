@@ -1,0 +1,33 @@
+---
+// Difference — positioning table vs generators / apps / tuition.
+import type { SiteContent } from '../i18n';
+interface Props { t: SiteContent }
+const { t } = Astro.props;
+---
+
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <div class="eyebrow">{t.difference.eyebrow}</div>
+      <h2 style="margin-top:16px;max-width:20ch">{t.difference.title}</h2>
+    </div>
+    <div class="tablewrap reveal">
+      <table>
+        <thead>
+          <tr>{t.difference.head.map((h) => <th>{h}</th>)}</tr>
+        </thead>
+        <tbody>
+          {
+            t.difference.rows.map((r) => (
+              <tr>
+                <td>{r.who}</td>
+                <td>{r.what}</td>
+                <td class="you">{r.talelah}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

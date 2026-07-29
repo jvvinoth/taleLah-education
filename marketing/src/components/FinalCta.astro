@@ -1,0 +1,31 @@
+---
+// Final CTA box + footer.
+import MinaLogo from './MinaLogo.astro';
+import type { SiteContent } from '../i18n';
+interface Props { t: SiteContent }
+const { t } = Astro.props;
+---
+
+<section class="final" id="try">
+  <div class="wrap">
+    <div class="box reveal">
+      <div class="eyebrow" style="justify-content:center">{t.finalCta.eyebrow}</div>
+      <h2 style="margin-top:16px">{t.finalCta.title}</h2>
+      <p>{t.finalCta.body}</p>
+      <div class="cta-row" style="justify-content:center;margin-top:32px">
+        <a href="#" class="btn coral lg">{t.finalCta.ctaPrimary}</a>
+        <a href="#how" class="btn ghost lg">{t.finalCta.ctaSecondary}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footin">
+    <a class="brand" href="#top">
+      <MinaLogo size={26} detailed={false} />
+      TaleLah
+    </a>
+    <div class="m">{t.footer.tagline}</div>
+  </div>
+</footer>

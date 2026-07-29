@@ -1,0 +1,130 @@
+---
+// Screens gallery — four device-framed mockups in the locale's language.
+// Swaps to real per-locale screenshots later without touching the layout.
+import MinaLogo from './MinaLogo.astro';
+import type { SiteContent } from '../i18n';
+
+interface Props {
+  t: SiteContent;
+}
+const { t } = Astro.props;
+const m = t.mock;
+---
+
+<section style="background:var(--mint-2)">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="eyebrow">{t.screens.eyebrow}</div>
+      <h2 style="margin-top:16px">{t.screens.title}</h2>
+      <p class="lede" style="margin-top:16px">{t.screens.lede}</p>
+    </div>
+    <div class="gallery reveal" style="margin-top:44px">
+      <!-- 1 · capture -->
+      <div class="gcard">
+        <div class="phone sm">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="sbar"><span>8:14</span><span>82%</span></div>
+            <div class="scr">
+              <div class="appbar">
+                <div class="applogo">TaleLah</div>
+                <span class="chip">{m.capture.chip}</span>
+              </div>
+              <div class="kick">{m.capture.kick}</div>
+              <div
+                class="card-mini"
+                style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px"
+              >
+                <div class="towerimg"><i class="t1"></i><i class="t2"></i><i class="t3"></i><i class="t4"></i></div>
+                <div class="notebox">{m.capture.note}</div>
+              </div>
+              <div class="btn-mini">{m.capture.btn}</div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">{t.screens.caps[0]}</div>
+      </div>
+      <!-- 2 · child story -->
+      <div class="gcard">
+        <div class="phone sm">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="sbar"><span>7:05</span><span>80%</span></div>
+            <div class="scr">
+              <div class="appbar">
+                <div class="applogo">TaleLah</div>
+                <span class="chip">{m.story.chip}</span>
+              </div>
+              <div class="scene" style="flex:1">
+                <MinaLogo size={54} detailed={false} />
+                <div>
+                  <div class:list={['mt-line', m.script]}>{m.story.line}</div>
+                  <div class="rom">{m.story.rom}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">{t.screens.caps[1]}</div>
+      </div>
+      <!-- 3 · mic listening -->
+      <div class="gcard">
+        <div class="phone sm">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="sbar"><span>7:06</span><span>79%</span></div>
+            <div class="scr">
+              <div class="appbar">
+                <div class="applogo">TaleLah</div>
+                <span class="chip coral">{m.mic.chip}</span>
+              </div>
+              <div class="scene coral" style="flex:1">
+                <div class:list={['mt-line', m.script]} style="font-size:16px">{m.mic.line}</div>
+                <div class="rom">{m.mic.rom}</div>
+                <div class="mic">
+                  <svg viewBox="0 0 24 24"
+                    ><path
+                      d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-2.1A7 7 0 0 0 19 12z"
+                    ></path></svg
+                  >
+                </div>
+                <div class="wave">
+                  <i style="height:7px"></i><i style="height:15px"></i><i style="height:20px"></i><i
+                    style="height:11px"></i><i style="height:17px"></i><i style="height:8px"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">{t.screens.caps[2]}</div>
+      </div>
+      <!-- 4 · family handoff -->
+      <div class="gcard">
+        <div class="phone sm">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="sbar"><span>7:12</span><span>78%</span></div>
+            <div class="scr">
+              <div class="appbar">
+                <div class="applogo">TaleLah</div>
+                <span class="chip gold">{m.handoff.chip}</span>
+              </div>
+              <div class="scene gold" style="flex:1">
+                <div class="kick" style="color:var(--yellow)">{m.handoff.kick}</div>
+                <div class:list={['mt-line', m.script]} style="font-size:15px">{m.handoff.line}</div>
+                <div class="play">
+                  <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                </div>
+                <div class="en">{m.handoff.note}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">{t.screens.caps[3]}</div>
+      </div>
+    </div>
+    <p class="center" style="font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:6px">
+      {t.screens.note}
+    </p>
+  </div>
+</section>

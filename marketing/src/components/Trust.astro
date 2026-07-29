@@ -1,0 +1,28 @@
+---
+// Trust & safety — the parent-confidence grid.
+import type { SiteContent } from '../i18n';
+interface Props { t: SiteContent }
+const { t } = Astro.props;
+---
+
+<section style="background:var(--mint-2)">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="eyebrow">{t.trust.eyebrow}</div>
+      <h2 style="margin-top:16px">{t.trust.title}</h2>
+    </div>
+    <div class="grid g2" style="margin-top:44px">
+      {
+        t.trust.cards.map((c) => (
+          <div class="card trustcard reveal">
+            <div class="ic">{c.icon}</div>
+            <div>
+              <div class="t">{c.title}</div>
+              <div class="m">{c.body}</div>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

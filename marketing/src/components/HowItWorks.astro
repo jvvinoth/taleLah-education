@@ -1,0 +1,27 @@
+---
+// Solution — the four-step loop.
+import type { SiteContent } from '../i18n';
+interface Props { t: SiteContent }
+const { t } = Astro.props;
+---
+
+<section id="how">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="eyebrow">{t.how.eyebrow}</div>
+      <h2 style="margin-top:16px" set:html={t.how.title} />
+      <p class="lede" style="margin-top:18px">{t.how.lede}</p>
+    </div>
+    <div class="grid g4 steps">
+      {
+        t.how.steps.map((s) => (
+          <div class="step card reveal">
+            <div class="stepnum">{s.num}</div>
+            <h3>{s.title}</h3>
+            <p>{s.body}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

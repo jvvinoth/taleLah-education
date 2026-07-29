@@ -1,0 +1,13 @@
+---
+// /ta /zh /ms — same page, locale-specific content + mockups.
+import Page from '../../components/Page.astro';
+import type { Locale } from '../../i18n';
+
+export function getStaticPaths() {
+  return [{ params: { lang: 'ta' } }, { params: { lang: 'zh' } }, { params: { lang: 'ms' } }];
+}
+
+const lang = Astro.params.lang as Locale;
+---
+
+<Page locale={lang} />

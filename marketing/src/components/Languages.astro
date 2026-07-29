@@ -1,0 +1,35 @@
+---
+// Languages — Singapore's mother tongues, presented as equals. English is
+// supported too, with an explicit nudge toward the home language.
+import type { SiteContent } from '../i18n';
+interface Props { t: SiteContent }
+const { t } = Astro.props;
+---
+
+<section id="languages">
+  <div class="wrap">
+    <div class="center reveal">
+      <div class="eyebrow">{t.languages.eyebrow}</div>
+      <h2 style="margin-top:16px">{t.languages.title}</h2>
+    </div>
+    <div class="langs reveal">
+      {
+        t.languages.items.map((l) => (
+          <div class:list={['lang', l.cls]}>
+            <div class="scr-l">{l.script}</div>
+            <div class="nm">{l.name}</div>
+            <div class="m">{l.body}</div>
+          </div>
+        ))
+      }
+    </div>
+    <div class="englang reveal">
+      <div class="badge">{t.languages.english.badge}</div>
+      <div>
+        <div class="t">{t.languages.english.title}</div>
+        <p class="m">{t.languages.english.body}</p>
+      </div>
+    </div>
+    <p class="center lede" style="margin:32px auto 0;font-size:16px">{t.languages.note}</p>
+  </div>
+</section>

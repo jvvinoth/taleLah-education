@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://talelah.app/sitemap-index.xml

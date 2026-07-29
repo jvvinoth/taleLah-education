@@ -1,0 +1,40 @@
+---
+// Sticky nav — brand, anchors, always-visible language pills, CTA.
+import MinaLogo from './MinaLogo.astro';
+import { LOCALES, localePath, type Locale, type SiteContent } from '../i18n';
+
+interface Props {
+  locale: Locale;
+  t: SiteContent;
+}
+const { locale, t } = Astro.props;
+---
+
+<nav>
+  <div class="navin">
+    <a class="brand" href="#top">
+      <MinaLogo size={30} />
+      TaleLah
+    </a>
+    <div class="navlinks">
+      <a href="#problem">{t.nav.problem}</a>
+      <a href="#how">{t.nav.how}</a>
+      <a href="#languages">{t.nav.languages}</a>
+      <div class="langsw" aria-label="Site language">
+        {
+          LOCALES.map((l) => (
+            <a
+              href={localePath(l.code)}
+              class:list={[l.cls, { on: l.code === locale }]}
+              aria-current={l.code === locale ? 'page' : undefined}
+              lang={l.htmlLang}
+            >
+              {l.label}
+            </a>
+          ))
+        }
+      </div>
+      <a href="#try" class="btn">{t.nav.cta}</a>
+    </div>
+  </div>
+</nav>

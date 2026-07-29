@@ -1,0 +1,32 @@
+---
+// Problem — dark band with the Singapore language-shift stat.
+import type { SiteContent } from '../i18n';
+interface Props { t: SiteContent }
+const { t } = Astro.props;
+---
+
+<section class="problem" id="problem">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="eyebrow">{t.problem.eyebrow}</div>
+      <h2 style="margin-top:16px;max-width:16ch">{t.problem.title}</h2>
+    </div>
+    <div class="statwrap reveal">
+      <div class="bignum">
+        <span class="from">{t.problem.statLabel}</span>{t.problem.statValue}<span
+          style="font-size:.5em">%</span
+        >
+      </div>
+      <div>
+        <p class="lede" set:html={t.problem.lede} />
+        <p class="note">{t.problem.source}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .problem .lede :global(b) {
+    color: #fff;
+  }
+</style>

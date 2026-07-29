@@ -1,0 +1,86 @@
+---
+// Base layout — html lang, meta/OG, hreflang alternates, self-hosted fonts,
+// theme toggle + scroll-reveal + wave animation scripts.
+import '@fontsource-variable/fraunces';
+import '@fontsource-variable/fraunces/wght-italic.css';
+import '@fontsource-variable/plus-jakarta-sans';
+import '@fontsource-variable/noto-sans-sc';
+import '@fontsource/noto-sans-tamil';
+import '@fontsource/noto-sans-tamil/600.css';
+import '../styles/global.css';
+import { LOCALES, localePath, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+  title: string;
+  description: string;
+}
+const { locale, title, description } = Astro.props;
+const htmlLang = LOCALES.find((l) => l.code === locale)!.htmlLang;
+const site = Astro.site ?? new URL('https://talelah.app');
+const canonical = new URL(localePath(locale), site).href;
+---
+
+<!doctype html>
+<html lang={htmlLang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {
+      LOCALES.map((l) => (
+        <link
+          rel="alternate"
+          hreflang={l.htmlLang}
+          href={new URL(localePath(l.code), site).href}
+        />
+      ))
+    }
+    <link rel="alternate" hreflang="x-default" href={site.href} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="TaleLah" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#1C857D" />
+  </head>
+  <body>
+    <slot />
+    <button class="toggle" id="themeToggle" aria-label="Toggle theme">◐ theme</button>
+    <script>
+      const root = document.documentElement;
+      root.classList.add('js');
+      document.getElementById('themeToggle')?.addEventListener('click', () => {
+        const cur =
+          root.getAttribute('data-theme') ||
+          (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+      });
+      const io = new IntersectionObserver(
+        (es) =>
+          es.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add('in');
+              io.unobserve(e.target);
+            }
+          }),
+        { threshold: 0.12 },
+      );
+      document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const bars = [...document.querySelectorAll<HTMLElement>('.wave i')];
+        let t = 0;
+        setInterval(() => {
+          t += 0.35;
+          bars.forEach(
+            (b, i) => (b.style.height = (7 + Math.abs(Math.sin(t + i * 0.7)) * 14).toFixed(0) + 'px'),
+          );
+        }, 95);
+      }
+    </script>
+  </body>
+</html>
