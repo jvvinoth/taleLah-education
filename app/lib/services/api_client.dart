@@ -127,6 +127,24 @@ class ApiClient {
     return Moment.fromJson(jsonDecode(res.body));
   }
 
+  /// F5 — multilingual voice → text for prefill (English/Chinese/Tamil/Malay).
+  /// Returns the transcript only; no moment is created, audio is discarded.
+  Future<String> transcribeMoment(List<int> audioBytes) async {
+    final req = http.MultipartRequest(
+        'POST', Uri.parse('$baseUrl/moments/transcribe'));
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.files.add(http.MultipartFile.fromBytes('audio', audioBytes,
+        filename: 'note.webm'));
+    final streamed = await req.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode >= 400) {
+      throw ApiException(
+          res.statusCode, _detail(res, 'Voice transcription failed'));
+    }
+    final data = jsonDecode(res.body);
+    return (data['transcript'] as String?)?.trim() ?? '';
+  }
+
   /// F5 — photo ≤10 MB; Qwen-VL-Max turns it into moment facts.
   Future<Moment> captureMomentPhoto({
     required String childProfileId,

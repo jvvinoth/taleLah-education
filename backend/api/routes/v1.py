@@ -385,6 +385,38 @@ async def capture_moment_text(
     )
 
 
+@router.post("/moments/transcribe")
+async def transcribe_moment(
+    audio: UploadFile = File(...),
+    adult_id: str = Depends(require_adult),
+):
+    """Multilingual voice → text for the parent to review before generating.
+    Auto-detects English, Chinese, Tamil or Malay (independent of the child's
+    learning pack). No moment is created; raw audio is discarded."""
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Audio too large (max 10 MB)")
+
+    asr = _get_asr("google")
+    if asr is None or not hasattr(asr, "transcribe_multilingual"):
+        raise HTTPException(503, "Voice transcription unavailable — type instead")
+    try:
+        transcript, detected = await asr.transcribe_multilingual(
+            audio_bytes,
+            primary="en-SG",
+            alternates=["cmn-Hans-CN", "ta-IN", "ms-MY"],
+        )
+    except Exception as e:  # noqa: BLE001 — any ASR failure → text fallback
+        logger.warning(f"[MomentTranscribe] ASR failed: {e}")
+        raise HTTPException(502, "Could not transcribe — try again or type it")
+    del audio_bytes  # hard rule 5 — raw parent audio never retained
+
+    transcript = transcript.strip()
+    if not transcript:
+        raise HTTPException(422, "Could not hear any words — try again or type it")
+    return {"transcript": transcript, "detected_language": detected}
+
+
 @router.post("/moments/voice", response_model=MomentResponse)
 async def capture_moment_voice(
     audio: UploadFile = File(...),

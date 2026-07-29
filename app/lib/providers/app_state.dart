@@ -147,6 +147,11 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// F5 — voice → text only. Auto-detects the spoken language so the parent
+  /// can review and edit before generating (does not start the pipeline).
+  Future<String> transcribeMoment(List<int> audioBytes) =>
+      api.transcribeMoment(audioBytes);
+
   /// F5 — photo ≤10 MB; Qwen-VL-Max reads it, then the same pipeline runs.
   Future<void> captureAndGeneratePhoto({
     required List<int> imageBytes,

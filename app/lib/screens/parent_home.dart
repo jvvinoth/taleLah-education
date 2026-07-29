@@ -1112,11 +1112,24 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       _captureError("Couldn't hear anything — try again closer to the mic");
       return;
     }
+    // Transcribe (auto-detects English / Chinese / Tamil / Malay) and PREFILL
+    // the text box — the parent reviews and edits, then taps Create.
     try {
-      await app.captureAndGenerateVoice(
-          audioBytes: result.wavBytes, locale: _selectedLocale);
+      final transcript = await app.transcribeMoment(result.wavBytes);
+      if (!mounted) return;
+      if (transcript.trim().isEmpty) {
+        _captureError("Couldn't catch that — try again or type it");
+        return;
+      }
+      setState(() {
+        final existing = _textController.text.trim();
+        _textController.text =
+            existing.isEmpty ? transcript : '$existing $transcript';
+        _textController.selection =
+            TextSelection.collapsed(offset: _textController.text.length);
+      });
     } catch (_) {
-      _captureError('Could not use that recording — try typing instead');
+      _captureError('Could not transcribe — try again or type it');
     }
   }
 

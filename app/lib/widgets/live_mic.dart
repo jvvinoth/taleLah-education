@@ -13,6 +13,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
 
 /// Result of one hands-free listening pass.
@@ -31,6 +32,7 @@ class LiveMic {
 
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _sub;
+  StreamSubscription<Amplitude>? _ampSub;
   Completer<LiveMicResult?>? _done;
   final BytesBuilder _pcm = BytesBuilder(copy: false);
 
@@ -77,8 +79,15 @@ class LiveMic {
         ),
       );
     } catch (_) {
-      _done = null;
-      return null;
+      // Web (and platforms without raw-PCM streaming) — fall back to a
+      // file-based recording that yields opus/webm bytes the backend sniffs.
+      // This is what makes voice capture work in the browser / PWA.
+      return _listenFile(
+        done,
+        maxDuration: maxDuration,
+        silenceAfter: silenceAfter,
+        noSpeechTimeout: noSpeechTimeout,
+      );
     }
 
     final startedAt = DateTime.now();
@@ -139,6 +148,83 @@ class LiveMic {
     return done.future;
   }
 
+  /// Web / no-PCM-stream fallback: record to a file (opus), drive the aura
+  /// from amplitude, and end on trailing silence — same UX, browser-safe.
+  Future<LiveMicResult?> _listenFile(
+    Completer<LiveMicResult?> done, {
+    required Duration maxDuration,
+    required Duration silenceAfter,
+    required Duration noSpeechTimeout,
+  }) async {
+    try {
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.opus,
+          numChannels: 1,
+          echoCancel: true,
+          noiseSuppress: true,
+        ),
+        path: '',
+      );
+    } catch (_) {
+      _done = null;
+      if (!done.isCompleted) done.complete(null);
+      return done.future;
+    }
+
+    final startedAt = DateTime.now();
+    var lastLoudAt = startedAt;
+    var speechStarted = false;
+
+    Future<void> finish() async {
+      if (done.isCompleted) return;
+      _ampSub?.cancel();
+      _ampSub = null;
+      String? url;
+      try {
+        url = await _recorder.stop();
+      } catch (_) {
+        url = null;
+      }
+      var bytes = Uint8List(0);
+      if (url != null && url.isNotEmpty) {
+        try {
+          bytes = await http.readBytes(Uri.parse(url));
+        } catch (_) {}
+      }
+      level.value = 0;
+      _done = null;
+      done.complete(LiveMicResult(bytes, heardSpeech: speechStarted));
+    }
+
+    _ampSub = _recorder
+        .onAmplitudeChanged(const Duration(milliseconds: 120))
+        .listen((amp) {
+      if (done.isCompleted) return;
+      // dBFS (~ -60..0) → 0..1 for the aura + a simple voice-activity gate.
+      final norm = ((amp.current + 45) / 45).clamp(0.0, 1.0);
+      level.value = level.value * 0.6 + norm * 0.4;
+      final now = DateTime.now();
+      final elapsed = now.difference(startedAt);
+      if (norm > 0.2) {
+        lastLoudAt = now;
+        if (!speechStarted) {
+          speechStarted = true;
+          heardSpeech.value = true;
+        }
+      }
+      if (elapsed >= maxDuration) {
+        finish();
+      } else if (speechStarted && now.difference(lastLoudAt) >= silenceAfter) {
+        finish();
+      } else if (!speechStarted && elapsed >= noSpeechTimeout) {
+        finish();
+      }
+    }, onError: (_) => finish());
+
+    return done.future;
+  }
+
   /// Abort the current pass — the pending [listen] resolves to null.
   Future<void> cancel() async {
     final pending = _done;
@@ -152,6 +238,8 @@ class LiveMic {
   void _teardown() {
     _sub?.cancel();
     _sub = null;
+    _ampSub?.cancel();
+    _ampSub = null;
     _done = null;
     _recorder.stop().catchError((_) => null);
     level.value = 0;

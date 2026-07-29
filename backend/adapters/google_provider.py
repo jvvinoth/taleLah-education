@@ -147,3 +147,58 @@ class GoogleASRProvider(ASRProvider):
 
         logger.info(f"[Google ASR] Transcribed: {transcript[:50]}...")
         return transcript
+
+    async def transcribe_multilingual(
+        self,
+        audio_bytes: bytes,
+        primary: str = "en-SG",
+        alternates: list[str] | None = None,
+    ) -> tuple[str, str]:
+        """Auto-detect across `primary` + up to 3 `alternates` (Google's cap).
+        Returns (transcript, detected_language). Used for parent moment capture
+        where the spoken language is independent of the child's learning pack."""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._multi_sync, audio_bytes, primary, alternates or []
+        )
+
+    def _multi_sync(
+        self, audio_bytes: bytes, primary: str, alternates: list[str]
+    ) -> tuple[str, str]:
+        client = self._get_client()
+        speech_mod = self._module
+        enc = speech_mod.RecognitionConfig.AudioEncoding
+
+        fmt = sniff_audio_format(audio_bytes)
+        encoding_map = {
+            "webm": enc.WEBM_OPUS,
+            "ogg": enc.OGG_OPUS,
+            "flac": enc.FLAC,
+            "mp3": enc.MP3,
+            "wav": enc.LINEAR16,
+        }
+        encoding = encoding_map.get(fmt, enc.ENCODING_UNSPECIFIED)
+
+        config_kwargs = {
+            "encoding": encoding,
+            "language_code": primary,
+            "alternative_language_codes": alternates,
+        }
+        if fmt == "wav":
+            config_kwargs["sample_rate_hertz"] = 16000
+        config = speech_mod.RecognitionConfig(**config_kwargs)
+
+        response = client.recognize(
+            config=config,
+            audio=speech_mod.RecognitionAudio(content=audio_bytes),
+        )
+        transcript = ""
+        detected = primary
+        for result in response.results:
+            transcript += result.alternatives[0].transcript
+            lang = getattr(result, "language_code", "")
+            if lang:
+                detected = lang
+        logger.info(f"[Google ASR·multi] {detected}: {transcript[:50]}...")
+        return transcript, detected
