@@ -1,21 +1,22 @@
 /// Child Session — premium interactive story playback with narration and choices.
 /// F4: plays the real approved story with pre-generated TTS audio (preloaded
 /// before the session starts); missing audio → parent-read fallback.
-/// F6: bounded child speech turn — record a short clip, backend matches it
-/// against the scene's expected intent only; miss 1 → replay slower,
-/// miss 2 → picture-choice fallback. Never says "wrong" (AC-04).
+/// F6: bounded child speech turn — hands-free: Mina listens on her own
+/// after the narration, voice-activity detection closes the turn on
+/// silence, the backend matches the clip against the scene's expected
+/// intent only; miss 1 → replay slower, miss 2 → picture-choice fallback.
+/// Never says "wrong" (AC-04).
 /// F7: child-mode lockdown — hold-to-exit gate, blocked back-nav, ≥56dp
 /// targets, Mina's 8 states (AC-03). F8: mission wait screen (AC-05).
 /// F9: family handoff modes (AC-06). F10: memory consent on goodbye.
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
-import 'package:record/record.dart';
 import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/live_mic.dart';
 import '../widgets/mina.dart';
 import 'mission_wait.dart';
 
@@ -30,10 +31,13 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   int _currentScene = 0;
   bool _sessionComplete = false;
 
-  // F6 — bounded speech turn state (per scene)
-  final AudioRecorder _recorder = AudioRecorder();
-  Timer? _autoStopTimer;
-  String _speechPhase = 'idle'; // idle|recording|processing|celebrate|retry|fallback
+  // F6 — bounded speech turn state (per scene). Hands-free 1-1 loop:
+  // Mina narrates → listens (VAD ends the turn on silence — no stop
+  // button) → thinks → answers → listens again.
+  final LiveMic _liveMic = LiveMic();
+  Timer? _autoListenTimer;
+  // idle|listening|processing|nudge|celebrate|retry|fallback
+  String _speechPhase = 'idle';
   int _attempt = 1;
   String _feedbackCopy = '';
   List<Map<String, dynamic>> _fallbackOptions = [];
@@ -71,9 +75,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
 
   @override
   void dispose() {
-    _autoStopTimer?.cancel();
+    _autoListenTimer?.cancel();
     _holdTimer?.cancel();
-    _recorder.dispose();
+    _liveMic.dispose();
     for (final p in _players.values) {
       p.dispose();
     }
@@ -186,11 +190,18 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     }
     final assetId = _scenes[index].assetId;
     final player = assetId == null ? null : _players[assetId];
-    if (player == null) return;
+    if (player == null) {
+      // Parent-read fallback — Mina still opens her ears after a beat so
+      // the conversation loop survives the no-audio path.
+      _scheduleAutoListen(index, delay: const Duration(seconds: 3));
+      return;
+    }
     try {
       await player.setPlaybackRate(1.0);
       await player.seek(Duration.zero);
       await player.resume();
+      // Half-duplex conversation: the mic opens when Mina stops talking.
+      player.onPlayerComplete.first.then((_) => _autoListen(index));
     } catch (_) {
       // Autoplay may be blocked until first tap — the LISTEN chip covers it.
     }
@@ -198,45 +209,59 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
 
   // ── F6 — bounded speech turn ─────────────────────────────────────────
 
-  Future<void> _onMicTap() async {
-    if (_speechPhase == 'recording') {
-      await _stopAndSubmit();
-      return;
-    }
-    try {
-      if (!await _recorder.hasPermission()) {
-        _celebrateLocally(); // no mic → story never blocks
-        return;
-      }
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-          numChannels: 1,
-        ),
-        path: 'clip.wav', // ignored on web (blob URL)
-      );
-      if (!mounted) return;
-      setState(() => _speechPhase = 'recording');
-      _autoStopTimer = Timer(const Duration(seconds: 6), _stopAndSubmit);
-    } catch (_) {
-      _celebrateLocally();
-    }
+  void _scheduleAutoListen(int index, {Duration delay = Duration.zero}) {
+    _autoListenTimer?.cancel();
+    _autoListenTimer = Timer(delay, () => _autoListen(index));
   }
 
-  Future<void> _stopAndSubmit() async {
-    _autoStopTimer?.cancel();
-    if (_speechPhase != 'recording') return;
+  /// Hands-free entry — open the mic only if this speak-scene is still
+  /// the one on screen and no turn is already underway.
+  void _autoListen(int index) {
+    if (!mounted || _sessionComplete) return;
+    if (_currentScene != index) return;
+    if (_scenes[index].interaction != 'speak') return;
+    if (_speechPhase != 'idle' && _speechPhase != 'retry') return;
+    _startListening();
+  }
+
+  Future<void> _startListening() async {
+    if (_speechPhase == 'listening' || _speechPhase == 'processing') return;
+    if (!await _liveMic.hasPermission()) {
+      _celebrateLocally(); // no mic → story never blocks
+      return;
+    }
+    if (!mounted) return;
+    for (final p in _players.values) {
+      p.stop(); // never listen while Mina is speaking
+    }
+    setState(() => _speechPhase = 'listening');
+    final result = await _liveMic.listen(
+      maxDuration: const Duration(seconds: 6),
+      silenceAfter: const Duration(milliseconds: 900),
+      noSpeechTimeout: const Duration(seconds: 8),
+    );
+    if (!mounted || _speechPhase != 'listening') return;
+    if (result == null) {
+      setState(() => _speechPhase = 'idle');
+      return;
+    }
+    if (!result.heardSpeech) {
+      // Silence — a gentle nudge, never a fail (AC-04).
+      setState(() => _speechPhase = 'nudge');
+      return;
+    }
+    await _submitClip(result.wavBytes);
+  }
+
+  Future<void> _submitClip(List<int> bytes) async {
     final app = context.read<AppState>();
     setState(() => _speechPhase = 'processing');
     try {
-      final path = await _recorder.stop();
       final sessionId = app.sessionId;
-      if (path == null || sessionId == null) {
+      if (sessionId == null) {
         _celebrateLocally();
         return;
       }
-      final bytes = await http.readBytes(Uri.parse(path));
       final result = await app.api.speechTurn(
         sessionId: sessionId,
         audioBytes: bytes,
@@ -310,21 +335,27 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     });
   }
 
-  /// Miss 1 → replay the scene narration a little slower (AC-04 ladder).
+  /// Miss 1 → replay the scene narration a little slower (AC-04 ladder),
+  /// then Mina listens again by herself — the loop keeps flowing.
   Future<void> _playSceneSlow() async {
-    final assetId = _scenes[_currentScene].assetId;
+    final index = _currentScene;
+    final assetId = _scenes[index].assetId;
     final player = assetId == null ? null : _players[assetId];
-    if (player == null) return;
+    if (player == null) {
+      _scheduleAutoListen(index, delay: const Duration(seconds: 3));
+      return;
+    }
     try {
       await player.setPlaybackRate(0.8);
       await player.seek(Duration.zero);
       await player.resume();
+      player.onPlayerComplete.first.then((_) => _autoListen(index));
     } catch (_) {}
   }
 
   void _resetSpeechState() {
-    _autoStopTimer?.cancel();
-    _recorder.stop().catchError((_) => null);
+    _autoListenTimer?.cancel();
+    _liveMic.cancel();
     _speechPhase = 'idle';
     _attempt = 1;
     _feedbackCopy = '';
@@ -610,7 +641,8 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         // AC-03 — system back never exits child mode; only the hold gate does.
         body: PopScope(
             canPop: false,
-            child: Column(
+            child: Stack(children: [
+              Column(
           children: [
             // Top bar — hold-to-exit gate + progress dots
             Padding(
@@ -847,7 +879,14 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               ),
             ),
           ],
-        )),
+        ),
+              // The 1-1 conversation overlay — Mina full screen, listening
+              // live, thinking, then answering. Silence ends the turn.
+              if (_speechPhase == 'listening' ||
+                  _speechPhase == 'processing' ||
+                  _speechPhase == 'nudge')
+                _buildListeningOverlay(scene),
+            ])),
       ),
     );
   }
@@ -1305,9 +1344,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       );
     }
 
-    // idle | recording | processing | retry — mic ring with status copy.
-    final recording = _speechPhase == 'recording';
-    final processing = _speechPhase == 'processing';
+    // idle | retry — Mina opens her ears on her own after the narration;
+    // the button is the manual way in (and the very first mic-permission
+    // gesture). No stop button anywhere — silence closes the turn.
     return Column(
       children: [
         Text(
@@ -1322,60 +1361,193 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 16),
-        // Gradient mic ring
         GestureDetector(
-          onTap: processing ? null : _onMicTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            width: 92,
-            height: 92,
+          onTap: _startListening,
+          child: Container(
+            height: 64, // AC-03 — child touch targets ≥56 dp
+            padding: const EdgeInsets.symmetric(horizontal: 28),
             decoration: BoxDecoration(
-              gradient: recording ? TGradients.coral : TGradients.hero,
-              shape: BoxShape.circle,
-              boxShadow:
-                  recording ? TShadows.glowCoral : TShadows.glowTeal,
+              gradient: TGradients.hero,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: TShadows.glowTeal,
             ),
-            child: Container(
-              margin: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.4),
-                  width: 2,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.mic_rounded, color: Colors.white, size: 26),
+                SizedBox(width: 10),
+                Text(
+                  'Talk to Mina',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-              child: processing
-                  ? const Padding(
-                      padding: EdgeInsets.all(28),
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
-                    )
-                  : Icon(
-                      recording ? Icons.stop_rounded : Icons.mic_rounded,
-                      color: Colors.white,
-                      size: 38,
-                    ),
+              ],
             ),
           ),
         ),
         const SizedBox(height: 10),
-        Text(
-          recording
-              ? 'Listening… tap when done'
-              : processing
-                  ? 'One moment…'
-                  : _speechPhase == 'retry'
-                      ? 'Listen again, then tap to speak'
-                      : 'Tap to speak',
-          style: const TextStyle(
+        const Text(
+          'She listens by herself — just speak!',
+          style: TextStyle(
             color: TColors.inkFaint,
             fontSize: 13,
             fontWeight: FontWeight.w700,
           ),
         ),
       ],
+    );
+  }
+
+  /// The hands-free conversation overlay: full-screen Mina reacting to the
+  /// child's live voice (listening), a thinking beat (processing), and a
+  /// gentle nudge when nothing was heard — never a dead end (AC-04).
+  Widget _buildListeningOverlay(_DemoScene scene) {
+    final listening = _speechPhase == 'listening';
+    final processing = _speechPhase == 'processing';
+    return Positioned.fill(
+      child: AnimatedContainer(
+        duration: _anim(300),
+        decoration: BoxDecoration(
+          gradient: listening ? TGradients.hero : TGradients.night,
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // The hold-to-exit gate stays reachable at all times (AC-03).
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Row(children: [_holdExitButton()]),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: listening || processing ? null : _startListening,
+                child: VoiceAura(
+                  level: _liveMic.level,
+                  color: Colors.white,
+                  active: listening,
+                  size: 150,
+                  child: Mina(
+                    state: listening
+                        ? MinaState.listening
+                        : processing
+                            ? MinaState.thinking
+                            : MinaState.encouraging,
+                    size: 150,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 36),
+                child: Text(
+                  listening
+                      ? scene.prompt
+                      : processing
+                          ? 'Mina is thinking…'
+                          : "Mina couldn't hear you 🤍",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    height: 1.35,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (listening)
+                ValueListenableBuilder<bool>(
+                  valueListenable: _liveMic.heardSpeech,
+                  builder: (_, heard, __) => Text(
+                    heard
+                        ? 'I hear you! Keep going… 🌟'
+                        : "Say it out loud — I'm listening",
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              else if (processing)
+                const ThinkingDots(color: Colors.white)
+              else
+                // Nudge — try again or keep the story going; never blocks.
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _overlayAction(
+                      icon: Icons.mic_rounded,
+                      label: 'Try again',
+                      onTap: _startListening,
+                    ),
+                    const SizedBox(width: 14),
+                    _overlayAction(
+                      icon: Icons.arrow_forward_rounded,
+                      label: 'Keep going',
+                      onTap: _celebrateLocally,
+                    ),
+                  ],
+                ),
+              const Spacer(),
+              if (listening)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 28),
+                  child: Text(
+                    "I'll answer when you pause",
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(height: 28),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _overlayAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 56, // AC-03 — child touch targets ≥56 dp
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.35),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

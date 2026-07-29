@@ -1,12 +1,10 @@
 /// Parent Home — premium moment capture + story review.
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:record/record.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/live_mic.dart';
 import 'child_session.dart';
 import 'family_mode.dart';
 import 'parent_review.dart';
@@ -26,10 +24,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   String _selectedLocale = 'ta-SG';
   int _navIndex = 0;
 
-  // F5 — voice note capture (≤45 s, enforced again server-side)
-  final AudioRecorder _momentRecorder = AudioRecorder();
-  Timer? _momentRecTimer;
-  bool _isRecordingMoment = false;
+  // F5 — hands-free voice note capture (≤45 s, enforced again
+  // server-side). LiveMic auto-stops when the parent pauses.
+  final LiveMic _momentMic = LiveMic();
+  bool _voiceOverlayVisible = false;
 
   static const _locales = [
     ('ta-SG', 'தமிழ்', 'Tamil'),
@@ -39,8 +37,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   @override
   void dispose() {
-    _momentRecTimer?.cancel();
-    _momentRecorder.dispose();
+    _momentMic.dispose();
     _textController.dispose();
     _clarifyController.dispose();
     super.dispose();
@@ -86,6 +83,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               bottom: MediaQuery.of(context).padding.bottom + 16,
               child: _buildBottomNav(app),
             ),
+            // Hands-free listening overlay — full-screen so the parent
+            // knows the mic is live; auto-dismisses when they pause.
+            if (_voiceOverlayVisible) _buildVoiceCaptureOverlay(),
             // Generation overlay — progress can never be scrolled out of
             // sight; covers the whole screen incl. the bottom nav.
             if (app.isGenerating) _buildGenerationOverlay(app),
@@ -436,14 +436,14 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             children: [
               Expanded(
                 child: _captureChip(
-                  emoji: _isRecordingMoment ? '⏹️' : '🎙️',
-                  label: _isRecordingMoment ? 'Recording… tap to send' : 'Speak it',
-                  active: _isRecordingMoment,
-                  onTap: app.isGenerating
+                  emoji: '🎙️',
+                  label: _voiceOverlayVisible ? 'Listening…' : 'Speak it',
+                  active: _voiceOverlayVisible,
+                  onTap: app.isGenerating || _voiceOverlayVisible
                       ? null
                       : app.activeProfile == null
                           ? () => _promptCreateProfile(app)
-                          : () => _toggleVoiceCapture(app),
+                          : () => _startVoiceCapture(app),
                 ),
               ),
               const SizedBox(width: 10),
@@ -452,7 +452,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   emoji: '📸',
                   label: 'Snap it',
                   active: false,
-                  onTap: app.isGenerating || _isRecordingMoment
+                  onTap: app.isGenerating || _voiceOverlayVisible
                       ? null
                       : app.activeProfile == null
                           ? () => _promptCreateProfile(app)
@@ -1092,41 +1092,124 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   // ── F5 · voice + photo capture ───────────────────────────────────
 
-  Future<void> _toggleVoiceCapture(AppState app) async {
-    if (_isRecordingMoment) {
-      _momentRecTimer?.cancel();
-      setState(() => _isRecordingMoment = false);
-      try {
-        final path = await _momentRecorder.stop();
-        if (path == null) return;
-        final bytes = await http.readBytes(Uri.parse(path));
-        await app.captureAndGenerateVoice(
-            audioBytes: bytes, locale: _selectedLocale);
-      } catch (e) {
-        _captureError('Could not use that recording — try typing instead');
-      }
+  Future<void> _startVoiceCapture(AppState app) async {
+    if (_voiceOverlayVisible) return;
+    if (!await _momentMic.hasPermission()) {
+      _captureError('Microphone not available — try typing instead');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _voiceOverlayVisible = true);
+    final result = await _momentMic.listen(
+      maxDuration: const Duration(seconds: 45),
+      silenceAfter: const Duration(milliseconds: 1400),
+      noSpeechTimeout: const Duration(seconds: 10),
+    );
+    if (!mounted) return;
+    setState(() => _voiceOverlayVisible = false);
+    if (result == null) return; // cancelled by the parent
+    if (!result.heardSpeech) {
+      _captureError("Couldn't hear anything — try again closer to the mic");
       return;
     }
     try {
-      if (!await _momentRecorder.hasPermission()) {
-        _captureError('Microphone not available — try typing instead');
-        return;
-      }
-      await _momentRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-          numChannels: 1,
-        ),
-        path: 'moment.wav', // ignored on web (blob URL)
-      );
-      setState(() => _isRecordingMoment = true);
-      _momentRecTimer = Timer(const Duration(seconds: 45), () {
-        if (mounted && _isRecordingMoment) _toggleVoiceCapture(app);
-      });
+      await app.captureAndGenerateVoice(
+          audioBytes: result.wavBytes, locale: _selectedLocale);
     } catch (_) {
-      _captureError('Microphone not available — try typing instead');
+      _captureError('Could not use that recording — try typing instead');
     }
+  }
+
+  /// Full-screen “I'm listening” moment — aura pulses with the parent's
+  /// voice and the capture ends by itself when they pause.
+  Widget _buildVoiceCaptureOverlay() {
+    return Positioned.fill(
+      child: Container(
+        decoration: const BoxDecoration(gradient: TGradients.hero),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const Spacer(),
+              VoiceAura(
+                level: _momentMic.level,
+                color: Colors.white,
+                size: 132,
+                child: Container(
+                  width: 132,
+                  height: 132,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.16),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.5), width: 2),
+                  ),
+                  child: const Center(
+                      child: Text('🎙️', style: TextStyle(fontSize: 52))),
+                ),
+              ),
+              const SizedBox(height: 28),
+              const Text(
+                "I'm listening — just talk",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ValueListenableBuilder<bool>(
+                valueListenable: _momentMic.heardSpeech,
+                builder: (_, heard, __) => Text(
+                  heard
+                      ? 'Got it — keep going, I\'ll stop when you pause'
+                      : 'Tell me about your moment today…',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 28),
+                child: GestureDetector(
+                  onTap: () => _momentMic.cancel(),
+                  child: Container(
+                    height: 56,
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.close_rounded,
+                            color: Colors.white, size: 22),
+                        SizedBox(width: 8),
+                        Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickPhoto(AppState app) async {
