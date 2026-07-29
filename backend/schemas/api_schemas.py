@@ -186,6 +186,9 @@ class SessionSummary(BaseModel):
     duration_seconds: int = 0
     fallback_events: int = 0
     completed_at: Optional[datetime] = None
+    # F11 — Growth Coach next-moment seed + parent encouragement
+    next_moment_suggestion: str = ""
+    encouragement: str = ""
 
 
 class MemorySaveRequest(BaseModel):

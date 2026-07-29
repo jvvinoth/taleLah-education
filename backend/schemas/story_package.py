@@ -10,14 +10,14 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────
 
 class StoryStatus(str, Enum):
     CAPTURED = "captured"
-    INTERPRETING = "interpreving"
+    INTERPRETING = "interpreting"
     NEEDS_CLARIFICATION = "needs_clarification"  # F3 — paused for one parent answer
     PLANNING = "planning"
     WRITING = "writing"
@@ -86,10 +86,21 @@ class LearningPlan(BaseModel):
     expected_intents: list[str] = []
 
 
+# Child mode must never present more than 3 tappable choices at once
+# (specs/story-package.md · bounded interactions).
+MAX_CHOICES = 3
+
+
 class SceneInteraction(BaseModel):
     type: InteractionType
     options: list[str] = []
     expected_intent: str = ""
+
+    @field_validator("options")
+    @classmethod
+    def _cap_options(cls, v: list[str]) -> list[str]:
+        # Hard cap — protects the child UI even if an agent/LLM over-produces.
+        return v[:MAX_CHOICES]
 
 
 class StoryScene(BaseModel):
@@ -121,7 +132,7 @@ class EndingPrompt(BaseModel):
 class Story(BaseModel):
     title: str = ""
     title_target_lang: str = ""
-    opening_choices: list[str] = Field(default_factory=list, max_length=3)
+    opening_choices: list[str] = Field(default_factory=list, max_length=MAX_CHOICES)
     scenes: list[StoryScene] = Field(default_factory=list)
     room_mission: RoomMission = RoomMission()
     family_handoff: FamilyHandoff = FamilyHandoff()
@@ -180,6 +191,16 @@ class Provenance(BaseModel):
     model_versions: dict[str, str] = {}
 
 
+class SessionOutcome(BaseModel):
+    """Growth Coach output persisted on session completion (F11).
+    Non-judgmental: no scores, no proficiency labels — just a forward-looking
+    seed for the next moment plus an encouraging note for the parent."""
+    completed_at: Optional[datetime] = None
+    next_moment_suggestion: str = ""
+    encouragement: str = ""
+    coach_source: str = ""  # qwen-max | fallback
+
+
 # ── The Story Package ─────────────────────────────────────────────────────
 
 class StoryPackage(BaseModel):
@@ -201,6 +222,8 @@ class StoryPackage(BaseModel):
     family_voice: FamilyVoiceConfig = FamilyVoiceConfig()
     validation: Validation = Validation()
     provenance: Provenance = Provenance()
+    # F11 — Growth Coach session record + next-moment seed
+    session_outcome: Optional[SessionOutcome] = None
 
     # Parent review & edit (F2): single-component regenerations, hard cap 5
     regeneration_count: int = 0

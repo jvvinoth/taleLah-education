@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Any, AsyncGenerator, Optional
 
 from .persistence import persistence
+from ..safety.gate import safety_gate
 from ..schemas.story_package import (
     MomentFact,
     StoryPackage,
@@ -301,14 +302,21 @@ class WorkflowOrchestrator:
                 logger.error(f"Agent {agent_name.value} failed: {e}")
                 raise
 
+        # After all agents, run the safety gate so it ALWAYS executes on the
+        # generation path (routes used to compute it and throw the result
+        # away). This sets pkg.validation.safety, which the guards below and
+        # approve_package enforce — a blocked package can never reach a child.
+        safety_passed, safety_failures = safety_gate.validate_package(pkg)
+
         # After all agents, check validation
         if pkg.validation.language == ValidationStatus.BLOCKED:
             await self._emit(package_id, {"type": "error", "error": "Language validation blocked"})
             raise ValueError("Language validation blocked — cannot proceed to parent")
 
-        if pkg.validation.safety == ValidationStatus.BLOCKED:
-            await self._emit(package_id, {"type": "error", "error": "Safety validation blocked"})
-            raise ValueError("Safety validation blocked — cannot proceed to parent")
+        if not safety_passed or pkg.validation.safety == ValidationStatus.BLOCKED:
+            reason = "; ".join(safety_failures) or "Safety validation blocked"
+            await self._emit(package_id, {"type": "error", "error": f"Safety validation blocked: {reason}"})
+            raise ValueError(f"Safety validation blocked — {reason}")
 
         # Set status to awaiting parent if all passed
         if pkg.status != StoryStatus.AWAITING_PARENT:
@@ -358,6 +366,13 @@ class WorkflowOrchestrator:
         if pkg.status != StoryStatus.AWAITING_PARENT:
             raise ValueError(f"Package not awaiting parent: {pkg.status.value}")
 
+        # Final safety gate — a package that never passed safety (or was later
+        # invalidated by an edit/regeneration) can never be approved for a child.
+        if pkg.validation.safety != ValidationStatus.PASSED:
+            raise ValueError(
+                "Package failed safety validation — cannot approve for child mode"
+            )
+
         self._transition(pkg, StoryStatus.APPROVED)
         pkg.validation.parent_approved_at = datetime.utcnow()
         self._traces[pkg.id].append(
@@ -374,6 +389,11 @@ class WorkflowOrchestrator:
 
         if pkg.status != StoryStatus.APPROVED:
             raise ValueError(f"Package not approved: {pkg.status.value}")
+
+        # Defense in depth — never open a child session on unsafe content even
+        # if the status somehow advanced without a clean safety pass.
+        if pkg.validation.safety != ValidationStatus.PASSED:
+            raise ValueError("Package failed safety validation — cannot start session")
 
         self._transition(pkg, StoryStatus.IN_SESSION)
         return pkg

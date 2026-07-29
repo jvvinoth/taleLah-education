@@ -3,12 +3,23 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import hmac
 import logging
 import random
 import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+)
 from fastapi.responses import Response, StreamingResponse
 
 from ...core.config import settings
@@ -126,6 +137,23 @@ def _get_asr(provider_name: str):
             api_key=settings.sarvam_api_key
         )
         return _asr_providers[provider_name]
+    if provider_name == "paraformer" and settings.dashscope_api_key:
+        from ...adapters.cosyvoice_provider import ParaformerASRProvider
+        _asr_providers[provider_name] = ParaformerASRProvider(
+            api_key=settings.dashscope_api_key,
+            base_url=settings.dashscope_base_url,
+        )
+        return _asr_providers[provider_name]
+    if provider_name == "google" and settings.google_application_credentials:
+        try:
+            from ...adapters.google_provider import GoogleASRProvider
+            _asr_providers[provider_name] = GoogleASRProvider(
+                credentials_path=settings.google_application_credentials,
+                project_id=settings.google_cloud_project,
+            )
+            return _asr_providers[provider_name]
+        except Exception:  # noqa: BLE001 — missing creds/SDK → text/picture fallback
+            return None
     return None
 
 
@@ -159,7 +187,81 @@ def _wav_duration_seconds(data: bytes) -> float:
         return 0.0
 
 
-# ── Auth (demo mode for Sprint 0) ─────────────────────────────────────────
+# ── Auth (HMAC-signed bearer tokens) ──────────────────────────────────────
+#
+# Sprint 0 shipped guessable `demo_{adult_id}` tokens plus a spoofable
+# `?adult_id=` query param, so any caller could read/write another family's
+# children, moments and stories (IDOR). Tokens are now signed with the app
+# secret and the adult identity is derived ONLY from a verified token —
+# never from a client-supplied field.
+
+
+def _sign(adult_id: str) -> str:
+    """HMAC-SHA256 of the adult id, truncated — unforgeable without the secret."""
+    return hmac.new(
+        settings.secret_key.encode(),
+        adult_id.encode(),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+
+
+def _make_token(adult_id: str) -> str:
+    return f"{adult_id}.{_sign(adult_id)}"
+
+
+def _adult_from_token(token: str) -> str | None:
+    """Return the adult id iff the token's signature verifies, else None."""
+    token = token.strip()
+    # Back-compat: accept the legacy demo_ prefix only if it still verifies as
+    # an unsigned id (it never will once tokens are signed), so this is inert.
+    if "." not in token:
+        return None
+    adult_id, _, sig = token.rpartition(".")
+    if not adult_id or not sig:
+        return None
+    if not hmac.compare_digest(sig, _sign(adult_id)):
+        return None
+    return adult_id
+
+
+async def require_adult(authorization: str = Header(default="")) -> str:
+    """FastAPI dependency — the authenticated adult id, or 401."""
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(401, "Missing or malformed Authorization header")
+    adult_id = _adult_from_token(token)
+    if adult_id is None or adult_id not in _adults:
+        raise HTTPException(401, "Invalid or expired session — please sign in again")
+    return adult_id
+
+
+def _require_profile(adult_id: str, profile_id: str) -> ChildProfile:
+    """Fetch a child profile the adult owns, else 404 (no existence leak)."""
+    profile = _profiles.get(profile_id)
+    if not profile or profile.adult_id != adult_id or profile.deleted_at:
+        raise HTTPException(404, "Child profile not found")
+    return profile
+
+
+def _require_package(adult_id: str, package_id: str) -> StoryPackage:
+    """Fetch a story package whose child the adult owns, else 404."""
+    pkg = orchestrator.get_package(package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    owner = _profiles.get(pkg.child_profile_id)
+    if not owner or owner.adult_id != adult_id:
+        raise HTTPException(404, "Package not found")
+    return pkg
+
+
+def _require_session(adult_id: str, session_id: str) -> StorySession:
+    """Fetch a session whose package the adult owns, else 404."""
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    _require_package(adult_id, session.story_package_id)
+    return session
+
 
 @router.post("/auth/register", response_model=TokenResponse)
 async def register(data: AdultRegister):
@@ -171,7 +273,7 @@ async def register(data: AdultRegister):
         aid for aid, adult in _adults.items() if adult["email"] == data.email
     )
     if existing:
-        return TokenResponse(access_token=f"demo_{existing[0]}", adult_id=existing[0])
+        return TokenResponse(access_token=_make_token(existing[0]), adult_id=existing[0])
 
     adult_id = f"adult_{uuid.uuid4().hex[:12]}"
     _adults[adult_id] = {
@@ -180,21 +282,23 @@ async def register(data: AdultRegister):
         "display_name": data.display_name,
     }
     persistence.save("adults", adult_id, _adults[adult_id])
-    return TokenResponse(access_token=f"demo_{adult_id}", adult_id=adult_id)
+    return TokenResponse(access_token=_make_token(adult_id), adult_id=adult_id)
 
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(data: AdultLogin):
     for aid, adult in _adults.items():
         if adult["email"] == data.email:
-            return TokenResponse(access_token=f"demo_{aid}", adult_id=aid)
+            return TokenResponse(access_token=_make_token(aid), adult_id=aid)
     raise HTTPException(404, "Adult not found")
 
 
 # ── Child Profiles ─────────────────────────────────────────────────────────
 
 @router.post("/profiles", response_model=ChildProfileResponse)
-async def create_profile(data: ChildProfileCreate, adult_id: str = "demo"):
+async def create_profile(
+    data: ChildProfileCreate, adult_id: str = Depends(require_adult)
+):
     profile_id = f"child_{uuid.uuid4().hex[:12]}"
     profile = ChildProfile(
         id=profile_id,
@@ -220,7 +324,7 @@ async def create_profile(data: ChildProfileCreate, adult_id: str = "demo"):
 
 
 @router.get("/profiles", response_model=list[ChildProfileResponse])
-async def list_profiles(adult_id: str = "demo"):
+async def list_profiles(adult_id: str = Depends(require_adult)):
     return [
         ChildProfileResponse(
             id=p.id, alias=p.alias, age_band=p.age_band,
@@ -236,9 +340,13 @@ async def list_profiles(adult_id: str = "demo"):
 # ── Family Speaker ─────────────────────────────────────────────────────────
 
 @router.post("/profiles/{profile_id}/speaker")
-async def set_speaker(profile_id: str, mode: FamilyVoiceMode = FamilyVoiceMode.CONFIDENT, label: str = "Amma"):
-    if profile_id not in _profiles:
-        raise HTTPException(404, "Profile not found")
+async def set_speaker(
+    profile_id: str,
+    mode: FamilyVoiceMode = FamilyVoiceMode.CONFIDENT,
+    label: str = "Amma",
+    adult_id: str = Depends(require_adult),
+):
+    _require_profile(adult_id, profile_id)
     speaker_id = f"speak_{uuid.uuid4().hex[:8]}"
     _speakers[speaker_id] = FamilySpeaker(
         id=speaker_id,
@@ -253,9 +361,10 @@ async def set_speaker(profile_id: str, mode: FamilyVoiceMode = FamilyVoiceMode.C
 # ── Moment Capture ─────────────────────────────────────────────────────────
 
 @router.post("/moments", response_model=MomentResponse)
-async def capture_moment_text(data: MomentCreateText):
-    if data.child_profile_id not in _profiles:
-        raise HTTPException(404, "Child profile not found")
+async def capture_moment_text(
+    data: MomentCreateText, adult_id: str = Depends(require_adult)
+):
+    _require_profile(adult_id, data.child_profile_id)
     moment_id = f"moment_{uuid.uuid4().hex[:12]}"
     moment = Moment(
         id=moment_id,
@@ -281,10 +390,10 @@ async def capture_moment_voice(
     audio: UploadFile = File(...),
     child_profile_id: str = Form(...),
     locale: str = Form("ta-SG"),
+    adult_id: str = Depends(require_adult),
 ):
     """F5 — parent voice note ≤45 s → pack ASR → text pipeline. Audio discarded."""
-    if child_profile_id not in _profiles:
-        raise HTTPException(404, "Child profile not found")
+    _require_profile(adult_id, child_profile_id)
     pack = pack_loader.get(locale)
     if not pack:
         raise HTTPException(422, f"No language pack for locale {locale}")
@@ -341,10 +450,10 @@ async def capture_moment_voice(
 async def capture_moment_photo(
     image: UploadFile = File(...),
     child_profile_id: str = Form(...),
+    adult_id: str = Depends(require_adult),
 ):
     """F5 — photo ≤10 MB → Qwen-VL-Max facts → text pipeline. Image discarded."""
-    if child_profile_id not in _profiles:
-        raise HTTPException(404, "Child profile not found")
+    _require_profile(adult_id, child_profile_id)
 
     content_type = (image.content_type or "").lower()
     if content_type not in ("image/jpeg", "image/png", "image/webp"):
@@ -395,9 +504,14 @@ async def capture_moment_photo(
 # ── Story Package Generation ──────────────────────────────────────────────
 
 @router.get("/packages", response_model=list[StoryPackageResponse])
-async def list_packages(child_profile_id: str = "", status: str = ""):
-    """Story library — all packages, newest first, optional filters."""
-    pkgs = orchestrator.list_packages()
+async def list_packages(
+    child_profile_id: str = "",
+    status: str = "",
+    adult_id: str = Depends(require_adult),
+):
+    """Story library — the adult's own packages, newest first, optional filters."""
+    owned = {pid for pid, p in _profiles.items() if p.adult_id == adult_id}
+    pkgs = [p for p in orchestrator.list_packages() if p.child_profile_id in owned]
     if child_profile_id:
         pkgs = [p for p in pkgs if p.child_profile_id == child_profile_id]
     if status:
@@ -407,10 +521,18 @@ async def list_packages(child_profile_id: str = "", status: str = ""):
 
 
 @router.post("/packages/generate", response_model=StoryPackageResponse)
-async def generate_package(moment_id: str, locale: str = "ta-SG"):
+async def generate_package(
+    moment_id: str, locale: str = "ta-SG", adult_id: str = Depends(require_adult)
+):
     moment = _moments.get(moment_id)
     if not moment:
         raise HTTPException(404, "Moment not found")
+    _require_profile(adult_id, moment.child_profile_id)
+
+    # Moderate the source moment BEFORE spending an LLM pipeline on it.
+    moderation = safety_gate.check_moment_content(moment.parent_text)
+    if not moderation.passed:
+        raise HTTPException(422, moderation.reason)
 
     # Create package via orchestrator
     pkg = orchestrator.create_package(
@@ -422,17 +544,15 @@ async def generate_package(moment_id: str, locale: str = "ta-SG"):
     # Seed the raw moment text for Agent 1 (Moment Lens extracts facts — F3)
     pkg.moment_text = moment.parent_text
 
-    # Run the generation pipeline (Agents 1-5)
+    # Run the generation pipeline (Agents 1-5). The orchestrator now runs the
+    # safety gate and raises if the story is unsafe — surface that as a 422
+    # (content problem) rather than a generic 500 (pipeline crash).
     try:
         pkg = await orchestrator.run_generation(pkg.id)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     except Exception as e:
         raise HTTPException(500, f"Generation failed: {e}")
-
-    # Run safety gate
-    passed, failures = safety_gate.validate_package(pkg)
-    if not passed:
-        # Don't block — mark as needs review
-        pass
 
     return StoryPackageResponse.from_package(pkg)
 
@@ -442,6 +562,7 @@ async def generate_package_async(
     moment_id: str,
     locale: str = "ta-SG",
     background_tasks: BackgroundTasks = None,
+    adult_id: str = Depends(require_adult),
 ):
     """
     Start story generation in the background.
@@ -450,6 +571,11 @@ async def generate_package_async(
     moment = _moments.get(moment_id)
     if not moment:
         raise HTTPException(404, "Moment not found")
+    _require_profile(adult_id, moment.child_profile_id)
+
+    moderation = safety_gate.check_moment_content(moment.parent_text)
+    if not moderation.passed:
+        raise HTTPException(422, moderation.reason)
 
     pkg = orchestrator.create_package(
         child_profile_id=moment.child_profile_id,
@@ -460,9 +586,10 @@ async def generate_package_async(
     pkg.moment_text = moment.parent_text
 
     async def _run():
+        # run_generation runs the safety gate and raises on a block; the SSE
+        # stream surfaces that error event to the parent app.
         try:
             await orchestrator.run_generation(pkg.id)
-            safety_gate.validate_package(pkg)
         except Exception as e:
             await orchestrator._emit(pkg.id, {"type": "error", "error": str(e)})
 
@@ -476,14 +603,14 @@ async def generate_package_async(
 
 
 @router.post("/packages/{package_id}/clarify")
-async def clarify_package(package_id: str, data: ClarifyRequest):
+async def clarify_package(
+    package_id: str, data: ClarifyRequest, adult_id: str = Depends(require_adult)
+):
     """
     F3 — parent answers the one clarification question.
     Resumes the paused pipeline in the background; SSE stream continues.
     """
-    pkg = orchestrator.get_package(package_id)
-    if not pkg:
-        raise HTTPException(404, "Package not found")
+    pkg = _require_package(adult_id, package_id)
     if pkg.status != StoryStatus.NEEDS_CLARIFICATION:
         raise HTTPException(
             409, f"Package is not awaiting clarification: {pkg.status.value}"
@@ -506,11 +633,11 @@ async def clarify_package(package_id: str, data: ClarifyRequest):
 
 
 @router.get("/packages/{package_id}/stream")
-async def stream_package_events(package_id: str):
+async def stream_package_events(
+    package_id: str, adult_id: str = Depends(require_adult)
+):
     """SSE stream of real-time generation progress events for a package."""
-    pkg = orchestrator.get_package(package_id)
-    if not pkg:
-        raise HTTPException(404, "Package not found")
+    _require_package(adult_id, package_id)
     return StreamingResponse(
         orchestrator.stream_events(package_id),
         media_type="text/event-stream",
@@ -523,16 +650,19 @@ async def stream_package_events(package_id: str):
 
 
 @router.get("/packages/{package_id}", response_model=StoryPackageDetail)
-async def get_package_detail(package_id: str):
-    pkg = orchestrator.get_package(package_id)
-    if not pkg:
-        raise HTTPException(404, "Package not found")
+async def get_package_detail(
+    package_id: str, adult_id: str = Depends(require_adult)
+):
+    pkg = _require_package(adult_id, package_id)
     return StoryPackageDetail(package=pkg)
 
 
 @router.get("/packages/{package_id}/trace")
-async def get_package_trace(package_id: str):
+async def get_package_trace(
+    package_id: str, adult_id: str = Depends(require_adult)
+):
     """Inspectable orchestration trace — for hackathon demo."""
+    _require_package(adult_id, package_id)
     trace = orchestrator.get_trace(package_id)
     if not trace:
         raise HTTPException(404, "Package not found")
@@ -564,9 +694,14 @@ async def debug_llm():
 
 
 @router.post("/packages/{package_id}/approve", response_model=StoryPackageResponse)
-async def approve_package(package_id: str, data: StoryPackageApproval):
+async def approve_package(
+    package_id: str,
+    data: StoryPackageApproval,
+    adult_id: str = Depends(require_adult),
+):
     if not data.approved:
         raise HTTPException(400, "Package rejected — regenerate or edit")
+    _require_package(adult_id, package_id)
     try:
         pkg = await orchestrator.approve_package(package_id)
     except ValueError as e:
@@ -627,11 +762,9 @@ REGEN_SYSTEM_PROMPTS = {
 }
 
 
-def _get_editable_package(package_id: str):
-    """Fetch a package that is still editable — 409 once approved (immutability)."""
-    pkg = orchestrator.get_package(package_id)
-    if not pkg:
-        raise HTTPException(404, "Package not found")
+def _get_editable_package(adult_id: str, package_id: str):
+    """Fetch an owned package that is still editable — 409 once approved."""
+    pkg = _require_package(adult_id, package_id)
     if pkg.status != StoryStatus.AWAITING_PARENT:
         raise HTTPException(
             409,
@@ -651,9 +784,11 @@ def _trace_edit(package_id: str, status: str, detail: str) -> None:
 
 
 @router.patch("/packages/{package_id}/facts")
-async def edit_facts(package_id: str, data: FactsUpdate):
+async def edit_facts(
+    package_id: str, data: FactsUpdate, adult_id: str = Depends(require_adult)
+):
     """Parent corrects the extracted moment facts before approval."""
-    pkg = _get_editable_package(package_id)
+    pkg = _get_editable_package(adult_id, package_id)
     facts = [t.strip() for t in data.facts if t.strip()]
     if not facts:
         raise HTTPException(400, "At least one non-empty fact is required")
@@ -670,9 +805,11 @@ async def edit_facts(package_id: str, data: FactsUpdate):
 
 
 @router.patch("/packages/{package_id}/target-word")
-async def swap_target_word(package_id: str, data: TargetWordSwap):
+async def swap_target_word(
+    package_id: str, data: TargetWordSwap, adult_id: str = Depends(require_adult)
+):
     """Swap one target word for another — validated against the pack word bank."""
-    pkg = _get_editable_package(package_id)
+    pkg = _get_editable_package(adult_id, package_id)
     if not pkg.learning_plan:
         raise HTTPException(400, "Package has no learning plan")
     plan = pkg.learning_plan
@@ -714,9 +851,11 @@ async def swap_target_word(package_id: str, data: TargetWordSwap):
 
 
 @router.patch("/packages/{package_id}/difficulty")
-async def set_difficulty(package_id: str, data: DifficultyUpdate):
+async def set_difficulty(
+    package_id: str, data: DifficultyUpdate, adult_id: str = Depends(require_adult)
+):
     """Parent adjusts the difficulty level of the learning plan."""
-    pkg = _get_editable_package(package_id)
+    pkg = _get_editable_package(adult_id, package_id)
     if not pkg.learning_plan:
         raise HTTPException(400, "Package has no learning plan")
 
@@ -822,13 +961,15 @@ async def _regen_handoff(pkg, llm) -> None:
 
 
 @router.post("/packages/{package_id}/regenerate")
-async def regenerate_component(package_id: str, data: RegenerateRequest):
+async def regenerate_component(
+    package_id: str, data: RegenerateRequest, adult_id: str = Depends(require_adult)
+):
     """
     Regenerate a single story component (scene / mission / handoff).
     Hard cap of 5 regenerations per package. Re-runs Language Guardian
     for the cleared translation and re-checks the safety gate.
     """
-    pkg = _get_editable_package(package_id)
+    pkg = _get_editable_package(adult_id, package_id)
     if pkg.regeneration_count >= MAX_REGENERATIONS:
         raise HTTPException(
             409, f"Regeneration cap reached ({MAX_REGENERATIONS} per package)"
@@ -890,10 +1031,8 @@ async def regenerate_component(package_id: str, data: RegenerateRequest):
 # ── Child Session ──────────────────────────────────────────────────────────
 
 @router.post("/sessions/start")
-async def start_session(data: SessionStart):
-    pkg = orchestrator.get_package(data.story_package_id)
-    if not pkg:
-        raise HTTPException(404, "Package not found")
+async def start_session(data: SessionStart, adult_id: str = Depends(require_adult)):
+    pkg = _require_package(adult_id, data.story_package_id)
     if pkg.status != StoryStatus.APPROVED:
         raise HTTPException(403, f"Package not approved — status: {pkg.status.value}")
 
@@ -916,10 +1055,8 @@ async def start_session(data: SessionStart):
 
 
 @router.post("/sessions/{session_id}/complete", response_model=SessionSummary)
-async def complete_session(session_id: str):
-    session = _sessions.get(session_id)
-    if not session:
-        raise HTTPException(404, "Session not found")
+async def complete_session(session_id: str, adult_id: str = Depends(require_adult)):
+    session = _require_session(adult_id, session_id)
 
     pkg = await orchestrator.complete_session(session.story_package_id)
     session.completed_at = datetime.utcnow()
@@ -935,15 +1072,21 @@ async def complete_session(session_id: str):
         duration_seconds=session.duration_seconds,
         fallback_events=session.fallback_events,
         completed_at=session.completed_at,
+        next_moment_suggestion=(
+            pkg.session_outcome.next_moment_suggestion if pkg.session_outcome else ""
+        ),
+        encouragement=(
+            pkg.session_outcome.encouragement if pkg.session_outcome else ""
+        ),
     )
 
 
 @router.post("/sessions/{session_id}/event")
-async def session_event(session_id: str, kind: str = Form(...)):
+async def session_event(
+    session_id: str, kind: str = Form(...), adult_id: str = Depends(require_adult)
+):
     """F8/F9 — the child app reports mission + handoff milestones."""
-    session = _sessions.get(session_id)
-    if not session:
-        raise HTTPException(404, "Session not found")
+    session = _require_session(adult_id, session_id)
     if kind == "mission_completed":
         session.mission_completed = True
     elif kind == "handoff_completed":
@@ -970,6 +1113,7 @@ async def speech_turn(
     audio: UploadFile = File(...),
     expected_intent: str = Form(""),
     attempt: int = Form(1),
+    adult_id: str = Depends(require_adult),
 ):
     """
     Transcribe the child clip, fuzzy-match against the pack's expected
@@ -977,9 +1121,7 @@ async def speech_turn(
     returned; raw audio is discarded after intent extraction (AC-07).
     Never says "wrong" — celebration/encouragement copy only (AC-04).
     """
-    session = _sessions.get(session_id)
-    if not session:
-        raise HTTPException(404, "Session not found")
+    session = _require_session(adult_id, session_id)
     pkg = orchestrator.get_package(session.story_package_id)
     if not pkg:
         raise HTTPException(404, "Package not found")
@@ -1063,11 +1205,13 @@ async def speech_turn(
 
 
 @router.post("/sessions/{session_id}/speech-fallback")
-async def speech_fallback(session_id: str, data: SpeechFallbackChoice):
+async def speech_fallback(
+    session_id: str,
+    data: SpeechFallbackChoice,
+    adult_id: str = Depends(require_adult),
+):
     """Picture-choice fallback — any tap celebrates; the story continues."""
-    session = _sessions.get(session_id)
-    if not session:
-        raise HTTPException(404, "Session not found")
+    session = _require_session(adult_id, session_id)
     pkg = orchestrator.get_package(session.story_package_id)
     if not pkg:
         raise HTTPException(404, "Package not found")
@@ -1093,13 +1237,13 @@ async def speech_fallback(session_id: str, data: SpeechFallbackChoice):
 # ── F10 · Memory consent + progress (AC-07, hard rule 6) ───────────────
 
 @router.post("/memories", status_code=201)
-async def save_memory(data: MemorySaveRequest):
+async def save_memory(
+    data: MemorySaveRequest, adult_id: str = Depends(require_adult)
+):
     """Save a family memory — refused without the explicit consent tick."""
     if not data.consent:
         raise HTTPException(403, "Memory consent required — nothing was saved")
-    session = _sessions.get(data.session_id)
-    if not session:
-        raise HTTPException(404, "Session not found")
+    session = _require_session(adult_id, data.session_id)
     pkg = orchestrator.get_package(session.story_package_id)
     memory_id = f"mem_{uuid.uuid4().hex[:10]}"
     memory = SavedMemory(
@@ -1119,22 +1263,29 @@ async def save_memory(data: MemorySaveRequest):
 
 
 @router.get("/memories")
-async def list_memories(child_profile_id: str = ""):
+async def list_memories(
+    child_profile_id: str = "", adult_id: str = Depends(require_adult)
+):
+    owned = {pid for pid, p in _profiles.items() if p.adult_id == adult_id}
     items = [
         m.model_dump()
         for m in _memories.values()
-        if not child_profile_id or m.child_profile_id == child_profile_id
+        if m.child_profile_id in owned
+        and (not child_profile_id or m.child_profile_id == child_profile_id)
     ]
     items.sort(key=lambda m: m["created_at"], reverse=True)
     return {"memories": items}
 
 
 @router.delete("/memories/{memory_id}")
-async def delete_memory(memory_id: str):
+async def delete_memory(memory_id: str, adult_id: str = Depends(require_adult)):
     """Delete a saved memory — removes the row AND the package media blobs."""
-    memory = _memories.pop(memory_id, None)
+    memory = _memories.get(memory_id)
     if not memory:
         raise HTTPException(404, "Memory not found")
+    # Ownership — the memory's child must belong to this adult.
+    _require_profile(adult_id, memory.child_profile_id)
+    _memories.pop(memory_id, None)
     media_purged = _media_blobs.pop(memory.story_package_id, None) is not None
     persistence.delete("saved_memories", memory_id)
     if media_purged:
@@ -1143,11 +1294,12 @@ async def delete_memory(memory_id: str):
 
 
 @router.get("/progress/{child_profile_id}")
-async def get_progress(child_profile_id: str):
+async def get_progress(
+    child_profile_id: str, adult_id: str = Depends(require_adult)
+):
     """North-star metric ONLY — completed family language moments this week.
     No scores, no streaks, no proficiency claims (hard rule 6)."""
-    if child_profile_id not in _profiles:
-        raise HTTPException(404, "Child profile not found")
+    _require_profile(adult_id, child_profile_id)
     week_ago = datetime.utcnow() - timedelta(days=7)
     count = 0
     for session in _sessions.values():
@@ -1211,14 +1363,16 @@ async def get_word_bank(locale: str):
 
 
 @router.post("/packages/{package_id}/swap-language")
-async def swap_language(package_id: str, new_locale: str = "ms-SG"):
+async def swap_language(
+    package_id: str,
+    new_locale: str = "ms-SG",
+    adult_id: str = Depends(require_adult),
+):
     """
     Demonstrate language-pack reuse: swap the locale on an existing package
     and re-run Language Guardian. No child-flow code changes.
     """
-    pkg = orchestrator.get_package(package_id)
-    if not pkg:
-        raise HTTPException(404, "Package not found")
+    pkg = _require_package(adult_id, package_id)
 
     new_pack = pack_loader.get(new_locale)
     if not new_pack:

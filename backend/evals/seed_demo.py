@@ -27,9 +27,11 @@ def seed(base_url: str) -> None:
         json={"email": "demo@talelah.app", "display_name": "Demo Parent"},
     ).json()
     adult_id = auth["adult_id"]
+    # Every object route requires a bearer token now (AC-05).
+    client.headers["Authorization"] = f"Bearer {auth['access_token']}"
     print(f"✅ App demo adult: {adult_id}")
 
-    profiles = client.get("/api/v1/profiles", params={"adult_id": adult_id}).json()
+    profiles = client.get("/api/v1/profiles").json()
     existing = next((p for p in profiles if p["alias"] == DEMO_ALIAS), None)
     if existing:
         print(f"✅ Demo profile already seeded: {existing['id']} ({DEMO_ALIAS})")
@@ -37,7 +39,6 @@ def seed(base_url: str) -> None:
     else:
         profile = client.post(
             "/api/v1/profiles",
-            params={"adult_id": adult_id},
             json={
                 "alias": DEMO_ALIAS,
                 "age_band": "4-5",

@@ -14,17 +14,35 @@ from ..schemas.story_package import StoryPackage, ValidationStatus
 
 logger = logging.getLogger(__name__)
 
-# Mission safety — reject any mission involving these (word-boundary matched)
+# Mission safety — reject any mission involving these (word-boundary matched).
+# A room mission is a physical off-screen task for a 4-8 year old, so the bar
+# is deliberately conservative: anything sharp, hot, electrical, chokeable,
+# height-related, water-related, or that sends the child out of the room.
 MISSION_REJECT_KEYWORDS = [
-    "leave the home", "leave the house", "go outside", "street",
+    # Leaving the safe indoor space
+    "leave the home", "leave the house", "go outside", "outdoors",
+    "street", "balcony", "lift", "elevator",
     "stranger", "unknown person",
-    "climb", "climbing", "ladder", "roof", "balcony",
-    "sharp", "knife", "scissors", "blade",
-    "stove", "cooking", "fire", "hot", "heat", "boil",
-    "medicine", "pill", "drug",
+    # Heights / climbing
+    "climb", "climbing", "ladder", "roof", "chair to reach",
+    "stairs", "staircase",
+    # Sharp / cutting
+    "sharp", "knife", "knives", "scissors", "blade", "needle", "razor",
+    # Heat / fire / electrical
+    "stove", "cooking", "fire", "flame", "hot", "heat", "boil",
+    "boiling", "oven", "kettle", "iron", "candle", "lighter", "match",
+    "matches", "socket", "plug", "outlet", "electric", "electrical", "wire",
+    "cord", "cable", "charger",
+    # Medicine / ingestion / allergy
+    "medicine", "pill", "pills", "drug", "vitamin", "cleaning", "detergent",
+    "bleach", "chemical",
     "allergy", "peanut", "eat", "taste", "swallow",
-    "pool", "swim", "bath", "bathtub", "bucket of water",
-    "road", "traffic", "cross the road",
+    # Choking / suffocation
+    "plastic bag", "bag over", "coin", "battery", "magnet",
+    # Water
+    "pool", "swim", "bath", "bathtub", "bucket of water", "toilet", "drain",
+    # Roads / traffic
+    "road", "traffic", "cross the road", "car park", "driveway",
 ]
 
 

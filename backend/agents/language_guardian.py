@@ -43,20 +43,63 @@ class LanguageGuardianAgent(BaseAgent):
 
         # All locale behaviour comes from the versioned pack — no locale literals here (AC-08)
         pack = pack_loader.get(package.language.locale)
-        if pack:
-            package.language.pack_version = pack.pack_version
-            await self._translate_and_validate(package, pack)
-        else:
+        if not pack:
+            # No pack means we cannot produce or verify the target language at
+            # all — the story must NOT reach a child untranslated.
             logger.warning(
-                f"[LanguageGuardian] No pack for locale {package.language.locale}, skipping translation"
+                f"[LanguageGuardian] No pack for locale {package.language.locale} — blocking"
             )
+            package.validation.language = ValidationStatus.BLOCKED
+            self._set_model_version(package, "language_guardian", "no-pack")
+            self._record_provenance(package)
+            return package
 
-        package.validation.language = ValidationStatus.PASSED
+        package.language.pack_version = pack.pack_version
+        await self._translate_and_validate(package, pack)
+
+        # Only PASS if every child-facing line actually carries a real target
+        # translation. Empty text or a bracketed `[language: ...]` placeholder
+        # is a translation failure, not a pass — surface it as REVISE so the
+        # parent regenerates instead of the child hearing English/gibberish.
+        language = pack.guardian.spoken_language
+        untranslated = self._untranslated_fields(package, language)
+        if untranslated:
+            package.validation.language = ValidationStatus.REVISE
+            logger.warning(
+                f"[LanguageGuardian] {len(untranslated)} field(s) not translated: "
+                f"{untranslated} — marking REVISE"
+            )
+        else:
+            package.validation.language = ValidationStatus.PASSED
+
         self._set_model_version(package, "language_guardian", "qwen-max" if self.llm else "fallback")
-
         self._record_provenance(package)
         logger.info(f"[LanguageGuardian] Validation: {package.validation.language.value}")
         return package
+
+    def _is_untranslated(self, text: str, language: str) -> bool:
+        """A field is untranslated if it is empty or still a bracket placeholder."""
+        if not text or not text.strip():
+            return True
+        return text.lstrip().startswith(f"[{language}:")
+
+    def _untranslated_fields(self, package: StoryPackage, language: str) -> list[str]:
+        """Names of the child-facing fields that lack a real target translation."""
+        missing: list[str] = []
+        if package.story.title and self._is_untranslated(
+            package.story.title_target_lang, language
+        ):
+            missing.append("title")
+        for scene in package.story.scenes:
+            if scene.narration and self._is_untranslated(
+                scene.narration_target_lang, language
+            ):
+                missing.append(f"scene[{scene.index}]")
+        if package.story.room_mission.instruction and self._is_untranslated(
+            package.story.room_mission.instruction_target_lang, language
+        ):
+            missing.append("room_mission")
+        return missing
 
     async def _translate_and_validate(self, package: StoryPackage, pack: LanguagePack) -> None:
         """Translate all child-facing text using Qwen-Max, guided by the pack rules."""

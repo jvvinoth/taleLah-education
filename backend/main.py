@@ -65,6 +65,7 @@ async def startup():
     from .adapters.dashscope_provider import DashScopeLLMProvider, DashScopeVisionProvider
     from .adapters.sarvam_provider import SarvamTTSProvider
     from .adapters.google_provider import GoogleTTSProvider
+    from .adapters.cosyvoice_provider import CosyVoiceTTSProvider
 
     # LLM provider (Qwen-Max via DashScope)
     llm: Optional[DashScopeLLMProvider] = None
@@ -94,6 +95,13 @@ async def startup():
     if settings.sarvam_api_key:
         tts_registry["sarvam"] = SarvamTTSProvider(api_key=settings.sarvam_api_key)
         logger.info("✅ Sarvam TTS initialized")
+
+    if settings.dashscope_api_key:
+        tts_registry["cosyvoice"] = CosyVoiceTTSProvider(
+            api_key=settings.dashscope_api_key,
+            base_url=settings.dashscope_base_url,
+        )
+        logger.info("✅ CosyVoice TTS initialized")
 
     if settings.google_application_credentials:
         try:

@@ -12,8 +12,9 @@ Writes: adaptive hint/fallback, session completion record,
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
-from ..schemas.story_package import StoryPackage
+from ..schemas.story_package import SessionOutcome, StoryPackage
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,10 @@ class GrowthCoachAgent(BaseAgent):
     async def execute(self, package: StoryPackage) -> StoryPackage:
         logger.info(f"[GrowthCoach] Summarising session for package {package.id}")
 
+        next_moment_suggestion = ""
+        encouragement = ""
+        coach_source = "fallback"
+
         if self.llm:
             try:
                 target_phrase = ""
@@ -55,13 +60,33 @@ class GrowthCoachAgent(BaseAgent):
                     ),
                     system=COACH_SYSTEM_PROMPT,
                 )
+                next_moment_suggestion = (result.get("next_moment_suggestion") or "").strip()
+                encouragement = (result.get("encouragement") or "").strip()
+                coach_source = "qwen-max"
                 self._set_model_version(package, "growth_coach", "qwen-max")
-                logger.info(f"[GrowthCoach] Next suggestion: {result.get('next_moment_suggestion', '')}")
+                logger.info(f"[GrowthCoach] Next suggestion: {next_moment_suggestion}")
             except Exception as e:
                 logger.error(f"[GrowthCoach] Qwen call failed: {e}")
                 self._set_model_version(package, "growth_coach", "fallback")
         else:
             self._set_model_version(package, "growth_coach", "fallback")
+
+        # Persist the session record + next-moment seed on the package (F11).
+        # A non-empty fallback keeps the parent journey moving even without an LLM.
+        if not next_moment_suggestion:
+            next_moment_suggestion = (
+                "Capture another everyday moment together — mealtime, play, or a walk "
+                "outside — and we'll turn it into the next little story."
+            )
+        if not encouragement:
+            encouragement = "Lovely work showing up together today. Every moment counts. 🐦"
+
+        package.session_outcome = SessionOutcome(
+            completed_at=datetime.utcnow(),
+            next_moment_suggestion=next_moment_suggestion,
+            encouragement=encouragement,
+            coach_source=coach_source,
+        )
 
         self._record_provenance(package)
         return package
