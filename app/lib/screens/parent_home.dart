@@ -1128,8 +1128,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         _textController.selection =
             TextSelection.collapsed(offset: _textController.text.length);
       });
-    } catch (_) {
-      _captureError('Could not transcribe — try again or type it');
+    } catch (e) {
+      // Surface the real reason (server says empty-audio vs format vs API) so
+      // we can see exactly what's wrong. Revert to a friendly message later.
+      _captureError('Voice: ${e.toString()}');
     }
   }
 

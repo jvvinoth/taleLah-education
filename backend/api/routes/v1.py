@@ -393,27 +393,49 @@ async def transcribe_moment(
     """Multilingual voice → text for the parent to review before generating.
     Auto-detects English, Chinese, Tamil or Malay (independent of the child's
     learning pack). No moment is created; raw audio is discarded."""
+    from ...adapters.audio_format import sniff_audio_format
+
     audio_bytes = await audio.read()
-    if len(audio_bytes) > 10 * 1024 * 1024:
+    size = len(audio_bytes)
+    fmt = sniff_audio_format(audio_bytes)
+    logger.info(
+        f"[MomentTranscribe] received {size}B · sniffed={fmt} · "
+        f"content_type={audio.content_type}"
+    )
+    if size > 10 * 1024 * 1024:
         raise HTTPException(413, "Audio too large (max 10 MB)")
+    if size < 200:
+        # The browser recording arrived empty — this is a client/web-mic issue,
+        # not a transcription one.
+        raise HTTPException(
+            422, f"No audio reached the server (only {size} bytes) — "
+            f"the browser recording came through empty."
+        )
 
     asr = _get_asr("google")
     if asr is None or not hasattr(asr, "transcribe_multilingual"):
-        raise HTTPException(503, "Voice transcription unavailable — type instead")
+        raise HTTPException(
+            503, "Google Speech-to-Text is not configured on the server."
+        )
     try:
         transcript, detected = await asr.transcribe_multilingual(
             audio_bytes,
             primary="en-SG",
             alternates=["cmn-Hans-CN", "ta-IN", "ms-MY"],
         )
-    except Exception as e:  # noqa: BLE001 — any ASR failure → text fallback
-        logger.warning(f"[MomentTranscribe] ASR failed: {e}")
-        raise HTTPException(502, "Could not transcribe — try again or type it")
+    except Exception as e:  # noqa: BLE001 — surface the real reason while debugging
+        logger.exception("[MomentTranscribe] ASR call failed")
+        raise HTTPException(
+            502, f"Transcribe failed [{fmt} {size}B]: {type(e).__name__}: {str(e)[:200]}"
+        )
     del audio_bytes  # hard rule 5 — raw parent audio never retained
 
     transcript = transcript.strip()
     if not transcript:
-        raise HTTPException(422, "Could not hear any words — try again or type it")
+        raise HTTPException(
+            422, f"Audio arrived ({fmt}, {size}B) but no words were recognised — "
+            f"speak a little louder/longer, or type it."
+        )
     return {"transcript": transcript, "detected_language": detected}
 
 
