@@ -308,7 +308,7 @@ class Earcons {
   static const int _sr = 22050;
 
   /// Playful rising bubble — "I'm listening".
-  Future<void> start() => _play(_sweep(360, 760, 0.15, vol: 0.30));
+  Future<void> start() => _play(_sweep(360, 760, 0.22, vol: 0.55));
 
   /// Warm two-note chime — "got it".
   Future<void> done() => _play(_chime());
@@ -317,8 +317,10 @@ class Earcons {
     try {
       await _player.stop();
       await _player.play(BytesSource(wav, mimeType: 'audio/wav'));
-    } catch (_) {
-      // Sound is a nicety — never let it block or break capture.
+    } catch (e) {
+      // Sound is a nicety — never block capture, but DO say why it failed
+      // (web autoplay policy and platform quirks fail silently otherwise).
+      debugPrint('🔇 Earcon playback failed: $e');
     }
   }
 
@@ -339,8 +341,8 @@ class Earcons {
   }
 
   Uint8List _chime() {
-    final a = _sweep(660, 660, 0.11, vol: 0.26);
-    final b = _sweep(990, 990, 0.17, vol: 0.26);
+    final a = _sweep(660, 660, 0.11, vol: 0.5);
+    final b = _sweep(990, 990, 0.17, vol: 0.5);
     // Concatenate the two notes (skip note b's 44-byte header).
     final out = Uint8List(a.length + (b.length - 44));
     out.setRange(0, a.length, a);

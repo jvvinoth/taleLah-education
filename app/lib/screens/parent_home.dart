@@ -177,8 +177,8 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Vanakkam 👋',
-                style: TextStyle(
+                _greeting(app),
+                style: const TextStyle(
                   fontSize: 14,
                   color: TColors.inkSoft,
                   fontWeight: FontWeight.w600,
@@ -200,6 +200,21 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         _iconBubble(Icons.notifications_none_rounded),
       ],
     );
+  }
+
+  /// Greeting follows the active child's home language; "Welcome" is the
+  /// default when no profile is selected (or the child learns in English).
+  String _greeting(AppState app) {
+    switch (app.activeProfile?.homeLanguage) {
+      case 'ta':
+        return 'Vanakkam 👋';
+      case 'zh':
+        return '欢迎 👋';
+      case 'ms':
+        return 'Selamat datang 👋';
+      default:
+        return 'Welcome 👋';
+    }
   }
 
   Widget _iconBubble(IconData icon) {
@@ -1115,15 +1130,17 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   Future<void> _startVoiceCapture(AppState app) async {
     if (_voiceOverlayVisible) return;
+    // Tap sound fires FIRST, synchronously inside the tap gesture — an await
+    // before play() lets the browser's user-gesture window expire, and web
+    // autoplay policy then blocks the sound silently.
+    _earcons.start();
     if (!await _momentMic.hasPermission()) {
       _captureError('Microphone not available — try typing instead');
       return;
     }
     if (!mounted) return;
     setState(() => _voiceOverlayVisible = true);
-    // Playful "I'm listening" bubble — plays BEFORE recording starts so it
-    // isn't captured, then a short beat before we open the mic.
-    _earcons.start();
+    // Short beat before the mic opens so the bloop isn't captured.
     await Future.delayed(const Duration(milliseconds: 180));
     if (!mounted) {
       _momentMic.cancel();
