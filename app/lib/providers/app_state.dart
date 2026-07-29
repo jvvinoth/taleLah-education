@@ -1,6 +1,7 @@
 /// App-wide state management using Provider.
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../models/community_event.dart';
 import '../models/story_package.dart';
 import '../services/api_client.dart';
 
@@ -12,8 +13,12 @@ class AppState extends ChangeNotifier {
   // ── Auth state ────────────────────────────────────────────────────────
   bool _isLoggedIn = false;
   String? _adultId;
+  String _displayName = '';
+  String _accountEmail = '';
   bool get isLoggedIn => _isLoggedIn;
   String? get adultId => _adultId;
+  String get displayName => _displayName;
+  String get accountEmail => _accountEmail;
 
   // ── Child profiles ────────────────────────────────────────────────────
   List<ChildProfile> _profiles = [];
@@ -59,37 +64,110 @@ class AppState extends ChangeNotifier {
   String? get initError => _initError;
 
   Future<void> initialize() async {
-    // Auto-register a demo user for hackathon
+    // Restore a saved session; without one the SplashGate routes to Login.
     _isInitializing = true;
     _initError = null;
     notifyListeners();
     try {
-      final healthOk = await api.checkHealth();
-      if (!healthOk) {
-        throw ApiException(503, "Can't reach TaleLah right now.");
+      final hasSession = await api.restoreSession();
+      if (!hasSession) {
+        _isLoggedIn = false;
+        _isInitializing = false;
+        notifyListeners();
+        return;
       }
-      _adultId = await api.register(
-        email: 'demo@talelah.app',
-        displayName: 'Demo Parent',
-      );
-      _isLoggedIn = true;
-      notifyListeners();
-
-      // Load existing profiles
-      _profiles = await api.getProfiles();
-      if (_profiles.isNotEmpty) {
-        _activeProfile = _profiles.first;
-      }
-      _isInitializing = false;
-      notifyListeners();
+      await _enterSession();
     } catch (e) {
       debugPrint('Init error: $e');
       _isInitializing = false;
-      _initError = e is ApiException
-          ? e.detail
-          : "Can't reach TaleLah right now. Check your connection and try again.";
+      if (e is ApiException && e.statusCode == 401) {
+        // Stale/expired token — clear it and show Login (not an error).
+        await api.clearSession();
+        _isLoggedIn = false;
+      } else {
+        _initError = e is ApiException
+            ? e.detail
+            : "Can't reach TaleLah right now. Check your connection and try again.";
+      }
       notifyListeners();
     }
+  }
+
+  /// Session is set on the ApiClient — validate it and load the home data.
+  Future<void> _enterSession() async {
+    final account = await api.me();
+    _adultId = account['id'] as String?;
+    _displayName = account['display_name'] as String? ?? '';
+    _accountEmail = account['email'] as String? ?? '';
+    _isLoggedIn = true;
+    notifyListeners();
+
+    _profiles = await api.getProfiles();
+    if (_profiles.isNotEmpty) {
+      _activeProfile = _profiles.first;
+    }
+    _isInitializing = false;
+    notifyListeners();
+  }
+
+  // ── Auth actions (throw ApiException with a friendly detail) ─────────
+
+  Future<void> login({required String email, required String password}) async {
+    await api.login(email: email, password: password);
+    await _enterSession();
+  }
+
+  Future<void> signup({
+    required String email,
+    required String password,
+    required String displayName,
+  }) =>
+      api.signup(email: email, password: password, displayName: displayName);
+
+  Future<void> verifyEmail({required String email, required String code}) async {
+    await api.verifyEmail(email: email, code: code);
+    await _enterSession();
+  }
+
+  Future<void> forgotPassword(String email) => api.forgotPassword(email);
+
+  Future<void> resendVerificationCode(String email) =>
+      api.resendVerificationCode(email);
+
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    await api.resetPassword(email: email, code: code, newPassword: newPassword);
+    await _enterSession();
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) =>
+      api.changePassword(
+          currentPassword: currentPassword, newPassword: newPassword);
+
+  /// One-tap judge/demo flow — the seeded demo account.
+  Future<void> tryDemo() async {
+    await api.register(
+        email: 'demo@talelah.app', displayName: 'Demo Parent');
+    await _enterSession();
+  }
+
+  Future<void> logout() async {
+    await api.clearSession();
+    _isLoggedIn = false;
+    _adultId = null;
+    _displayName = '';
+    _accountEmail = '';
+    _profiles = [];
+    _activeProfile = null;
+    _latestPackage = null;
+    _approvedStory = null;
+    notifyListeners();
   }
 
   // ── Profile management ────────────────────────────────────────────────
@@ -98,16 +176,57 @@ class AppState extends ChangeNotifier {
     required String alias,
     required String ageBand,
     String targetLocale = 'ta-SG',
+    String homeLanguage = 'en',
   }) async {
     final profile = await api.createProfile(
       alias: alias,
       ageBand: ageBand,
       targetLocale: targetLocale,
+      homeLanguage: homeLanguage,
     );
     _profiles.add(profile);
     _activeProfile = profile;
     notifyListeners();
     return profile;
+  }
+
+  Future<void> updateProfile(
+    String profileId, {
+    String? alias,
+    String? ageBand,
+    String? homeLanguage,
+  }) async {
+    final updated = await api.updateProfile(
+      profileId,
+      alias: alias,
+      ageBand: ageBand,
+      homeLanguage: homeLanguage,
+    );
+    final i = _profiles.indexWhere((p) => p.id == profileId);
+    if (i >= 0) _profiles[i] = updated;
+    if (_activeProfile?.id == profileId) _activeProfile = updated;
+    notifyListeners();
+  }
+
+  /// Upload the kid's photo, then refresh so cards show it immediately.
+  Future<void> uploadProfilePhoto({
+    required String profileId,
+    required List<int> imageBytes,
+    String contentType = 'image/jpeg',
+  }) async {
+    await api.uploadProfilePhoto(
+      profileId: profileId,
+      imageBytes: imageBytes,
+      contentType: contentType,
+    );
+    _profiles = await api.getProfiles();
+    if (_activeProfile != null) {
+      _activeProfile = _profiles.firstWhere(
+        (p) => p.id == _activeProfile!.id,
+        orElse: () => _activeProfile!,
+      );
+    }
+    notifyListeners();
   }
 
   void selectProfile(ChildProfile profile) {
@@ -466,5 +585,29 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Memory delete failed: $e');
     }
+  }
+
+  // ── Community Events ──────────────────────────────────────────────────
+
+  List<CommunityEvent> _events = [];
+  bool _eventsLoading = false;
+  String? _eventsError;
+  List<CommunityEvent> get events => _events;
+  bool get eventsLoading => _eventsLoading;
+  String? get eventsError => _eventsError;
+
+  Future<void> loadEvents({String language = ''}) async {
+    _eventsLoading = true;
+    _eventsError = null;
+    notifyListeners();
+    try {
+      _events = await api.getEvents(language: language);
+    } catch (e) {
+      _eventsError = e is ApiException
+          ? e.detail
+          : "Couldn't load events — check your connection";
+    }
+    _eventsLoading = false;
+    notifyListeners();
   }
 }

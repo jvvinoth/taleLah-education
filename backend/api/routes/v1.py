@@ -449,6 +449,23 @@ def _clear_code(adult: dict, prefix: str) -> None:
         adult.pop(key, None)
 
 
+@router.post("/auth/resend-code")
+async def resend_verification_code(data: ForgotPassword):
+    # Same anti-enumeration contract as forgot-password: always 200.
+    found = _find_adult_by_email(data.email)
+    if found and not found[1].get("email_verified"):
+        aid, adult = found
+        code = _new_code()
+        adult["verify_code_hash"] = _hash_code(code)
+        adult["verify_expires"] = (datetime.utcnow() + CODE_TTL).isoformat()
+        adult["verify_attempts"] = 0
+        persistence.save("adults", aid, adult)
+        await send_verification_email(
+            adult["email"], adult.get("display_name", "there"), code
+        )
+    return {"message": "If that email is pending verification, a new code is on its way"}
+
+
 @router.post("/auth/verify-email", response_model=TokenResponse)
 async def verify_email(data: EmailVerify):
     found = _find_adult_by_email(data.email)

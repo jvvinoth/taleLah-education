@@ -8,6 +8,8 @@ class ChildProfile {
   final String understandingLevel;
   final String speakingLevel;
   final List<String> interests;
+  final String homeLanguage;
+  final String? photoUrl;
 
   ChildProfile({
     required this.id,
@@ -17,6 +19,8 @@ class ChildProfile {
     this.understandingLevel = 'emerging',
     this.speakingLevel = 'emerging',
     this.interests = const [],
+    this.homeLanguage = 'en',
+    this.photoUrl,
   });
 
   factory ChildProfile.fromJson(Map<String, dynamic> json) => ChildProfile(
@@ -30,6 +34,8 @@ class ChildProfile {
                 ?.map((e) => e as String)
                 .toList() ??
             [],
+        homeLanguage: json['home_language'] as String? ?? 'en',
+        photoUrl: json['photo_url'] as String?,
       );
 }
 

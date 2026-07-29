@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/story_package.dart';
 import '../providers/app_state.dart';
+import '../services/api_client.dart';
 import '../theme/app_theme.dart';
+import 'add_child_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -109,7 +111,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // Add child
               GestureDetector(
-                onTap: () => _showAddChildDialog(context, app),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddChildScreen()),
+                ),
                 child: Container(
                   height: 54,
                   decoration: BoxDecoration(
@@ -258,6 +263,125 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 18),
               ],
 
+              // Account — who's signed in, change password, logout
+              const Text(
+                'Account',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: TColors.inkSoft,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TCard(
+                radius: 26,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: TColors.mist,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(Icons.person_rounded,
+                              color: TColors.tealDeep, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                app.displayName.isNotEmpty
+                                    ? app.displayName
+                                    : 'TaleLah parent',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: TColors.ink,
+                                ),
+                              ),
+                              if (app.accountEmail.isNotEmpty)
+                                Text(
+                                  app.accountEmail,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: TColors.inkFaint,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: () => _showChangePasswordDialog(context, app),
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: TColors.mist,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.lock_outline_rounded,
+                                  color: TColors.tealDeep, size: 18),
+                              SizedBox(width: 8),
+                              Text(
+                                'Change password',
+                                style: TextStyle(
+                                  color: TColors.tealDeep,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () => _confirmLogout(context, app),
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: TColors.blush,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.logout_rounded,
+                                  color: TColors.coral, size: 18),
+                              SizedBox(width: 8),
+                              Text(
+                                'Log out',
+                                style: TextStyle(
+                                  color: TColors.coral,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
               // About
               TCard(
                 radius: 26,
@@ -347,10 +471,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               decoration: BoxDecoration(
                 color: active ? TColors.mint : TColors.sky,
                 borderRadius: BorderRadius.circular(18),
+                image: p.photoUrl != null && p.photoUrl!.isNotEmpty
+                    ? DecorationImage(
+                        image: NetworkImage(app.api.photoUrl(p.photoUrl!)),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
-              child: const Center(
-                child: Text('🧒', style: TextStyle(fontSize: 24)),
-              ),
+              child: p.photoUrl == null || p.photoUrl!.isEmpty
+                  ? Center(
+                      child: Text(
+                        p.alias.isNotEmpty ? p.alias[0].toUpperCase() : '🧒',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: TColors.tealDeep,
+                        ),
+                      ),
+                    )
+                  : null,
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -397,6 +536,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             else
               const Icon(Icons.radio_button_unchecked_rounded,
                   color: TColors.inkFaint, size: 20),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => AddChildScreen(existing: p)),
+              ),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: TColors.bgTop,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.edit_rounded,
+                    color: TColors.inkSoft, size: 17),
+              ),
+            ),
           ],
         ),
       ),
@@ -416,81 +573,186 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showAddChildDialog(BuildContext context, AppState app) {
-    final nameCtrl = TextEditingController();
+  void _showChangePasswordDialog(BuildContext context, AppState app) {
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    String? error;
+    bool busy = false;
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('👶',
-                  style: TextStyle(fontSize: 40), textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              const Text(
-                'Add Your Child',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF7F3E9),
-                  borderRadius: BorderRadius.circular(16),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('🔐',
+                    style: TextStyle(fontSize: 40),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                const Text(
+                  'Change password',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
-                child: TextField(
-                  controller: nameCtrl,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                  decoration: const InputDecoration(
-                    hintText: "Child's name (e.g. Arun)",
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.all(16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              GestureDetector(
-                onTap: () async {
-                  if (nameCtrl.text.trim().isEmpty) return;
-                  await app.createProfile(
-                    alias: nameCtrl.text.trim(),
-                    ageBand: '5-6',
-                    targetLocale: app.activeProfile?.targetLocale ?? 'ta-SG',
-                  );
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                child: Container(
-                  height: 54,
-                  decoration: BoxDecoration(
-                    gradient: TGradients.coral,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Center(
+                const SizedBox(height: 20),
+                if (error != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: TColors.blush,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                     child: Text(
-                      'Add Child',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
+                      error!,
+                      style: const TextStyle(
+                        color: TColors.coralDark,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                ],
+                _passwordField(currentCtrl, 'Current password'),
+                const SizedBox(height: 12),
+                _passwordField(newCtrl, 'New password (min 8 characters)'),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: busy
+                      ? null
+                      : () async {
+                          if (newCtrl.text.length < 8) {
+                            setDialogState(() => error =
+                                'Use at least 8 characters for the new password');
+                            return;
+                          }
+                          setDialogState(() {
+                            busy = true;
+                            error = null;
+                          });
+                          try {
+                            await app.changePassword(
+                              currentPassword: currentCtrl.text,
+                              newPassword: newCtrl.text,
+                            );
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('Password updated ✓')),
+                              );
+                            }
+                          } on ApiException catch (e) {
+                            setDialogState(() {
+                              busy = false;
+                              error = e.detail;
+                            });
+                          } catch (_) {
+                            setDialogState(() {
+                              busy = false;
+                              error =
+                                  "Can't reach TaleLah right now — please try again";
+                            });
+                          }
+                        },
+                  child: Container(
+                    height: 54,
+                    decoration: BoxDecoration(
+                      gradient: TGradients.coral,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Center(
+                      child: busy
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Text(
+                              'Update password',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel',
-                    style: TextStyle(color: TColors.inkFaint)),
-              ),
-            ],
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel',
+                      style: TextStyle(color: TColors.inkFaint)),
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _passwordField(TextEditingController controller, String hint) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F3E9),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: true,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(
+              color: TColors.inkFaint,
+              fontSize: 13,
+              fontWeight: FontWeight.w500),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.all(16),
+        ),
+      ),
+    );
+  }
+
+  void _confirmLogout(BuildContext context, AppState app) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24)),
+        title: const Text('Log out?',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        content: const Text(
+            "You'll need your email and password to sign back in.",
+            style: TextStyle(fontSize: 13, color: TColors.inkSoft)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Stay',
+                style: TextStyle(color: TColors.inkFaint)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              // Back to the root so SplashGate can show the login screen.
+              Navigator.of(context).popUntil((r) => r.isFirst);
+              await app.logout();
+            },
+            child: const Text('Log out',
+                style: TextStyle(
+                    color: TColors.coral, fontWeight: FontWeight.w800)),
+          ),
+        ],
       ),
     );
   }

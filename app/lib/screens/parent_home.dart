@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live_mic.dart';
+import 'add_child_screen.dart';
 import 'child_session.dart';
+import 'community_events.dart';
 import 'family_mode.dart';
 import 'parent_review.dart';
 import 'profile_screen.dart';
@@ -294,20 +296,28 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           Container(
             width: 38,
             height: 38,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
+              image: p.photoUrl != null && p.photoUrl!.isNotEmpty
+                  ? DecorationImage(
+                      image: NetworkImage(app.api.photoUrl(p.photoUrl!)),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
             ),
-            child: Center(
-              child: Text(
-                p.alias.isNotEmpty ? p.alias[0].toUpperCase() : '🙂',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: TColors.tealDeep,
-                ),
-              ),
-            ),
+            child: p.photoUrl == null || p.photoUrl!.isEmpty
+                ? Center(
+                    child: Text(
+                      p.alias.isNotEmpty ? p.alias[0].toUpperCase() : '🙂',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: TColors.tealDeep,
+                      ),
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: 10),
           Column(
@@ -981,6 +991,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       (Icons.home_rounded, 'Home'),
       (Icons.auto_stories_rounded, 'Stories'),
       (Icons.family_restroom_rounded, 'Family'),
+      (Icons.event_rounded, 'Events'),
       (Icons.person_rounded, 'Profile'),
     ];
     return Container(
@@ -1006,8 +1017,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             behavior: HitTestBehavior.opaque,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
+              // 5 items now — slimmer pills so the pill row never overflows.
               padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: selected ? TColors.peach : Colors.transparent,
                 borderRadius: BorderRadius.circular(22),
@@ -1055,6 +1067,13 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       return;
     }
     if (i == 3) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CommunityEventsScreen()),
+      );
+      return;
+    }
+    if (i == 4) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ProfileScreen()),
@@ -1333,81 +1352,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   }
 
   void _showCreateProfileDialog(AppState app) {
-    final nameCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('👶', style: TextStyle(fontSize: 40),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              const Text(
-                'Add Your Child',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF7F3E9),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: TextField(
-                  controller: nameCtrl,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                  decoration: const InputDecoration(
-                    hintText: "Child's name (e.g. Arun)",
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.all(16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              GestureDetector(
-                onTap: () async {
-                  if (nameCtrl.text.trim().isEmpty) return;
-                  await app.createProfile(
-                    alias: nameCtrl.text.trim(),
-                    ageBand: '5-6',
-                    targetLocale: _selectedLocale,
-                  );
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                child: Container(
-                  height: 54,
-                  decoration: BoxDecoration(
-                    gradient: TGradients.coral,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'Add Child',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel',
-                    style: TextStyle(color: TColors.inkFaint)),
-              ),
-            ],
-          ),
-        ),
-      ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddChildScreen()),
     );
   }
 }

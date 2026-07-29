@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/community_event.dart';
 import '../models/story_package.dart';
 
 class ApiException implements Exception {
@@ -29,6 +31,41 @@ class ApiClient {
 
   // ── Auth ──────────────────────────────────────────────────────────────
 
+  static const _kToken = 'talelah_token';
+  static const _kAdultId = 'talelah_adult_id';
+
+  bool get hasSession => _token != null;
+
+  /// Restore a persisted session (if any). Returns true when a token exists.
+  Future<bool> restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    _token = prefs.getString(_kToken);
+    _adultId = prefs.getString(_kAdultId);
+    return _token != null;
+  }
+
+  Future<void> _persistSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_token != null) await prefs.setString(_kToken, _token!);
+    if (_adultId != null) await prefs.setString(_kAdultId, _adultId!);
+  }
+
+  /// Drop the session locally (logout / expired token).
+  Future<void> clearSession() async {
+    _token = null;
+    _adultId = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kToken);
+    await prefs.remove(_kAdultId);
+  }
+
+  void _adoptTokenResponse(Map<String, dynamic> data) {
+    _token = data['access_token'] as String?;
+    _adultId = data['adult_id'] as String?;
+    _persistSession();
+  }
+
+  /// Legacy demo-tier entry — powers the "Try demo" button.
   Future<String> register({
     required String email,
     required String displayName,
@@ -38,25 +75,118 @@ class ApiClient {
       headers: _headers,
       body: jsonEncode({'email': email, 'display_name': displayName}),
     );
-    final data = jsonDecode(res.body);
-    _token = data['access_token'];
-    _adultId = data['adult_id'];
+    final data = _jsonOrThrow(res);
+    _adoptTokenResponse(data);
     return _adultId!;
   }
 
-  Future<String?> login({required String email}) async {
+  /// Signup — backend emails a 6-digit verification code.
+  Future<void> signup({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/auth/signup'),
+      headers: _headers,
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+        'display_name': displayName,
+      }),
+    );
+    _jsonOrThrow(res);
+  }
+
+  /// Verify the emailed code — auto-logs-in on success.
+  Future<String> verifyEmail({
+    required String email,
+    required String code,
+  }) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/auth/verify-email'),
+      headers: _headers,
+      body: jsonEncode({'email': email, 'code': code}),
+    );
+    final data = _jsonOrThrow(res);
+    _adoptTokenResponse(data);
+    return _adultId!;
+  }
+
+  Future<String> login({
+    required String email,
+    required String password,
+  }) async {
     final res = await _client.post(
       Uri.parse('$baseUrl/auth/login'),
       headers: _headers,
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    final data = _jsonOrThrow(res);
+    _adoptTokenResponse(data);
+    return _adultId!;
+  }
+
+  Future<void> forgotPassword(String email) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/auth/forgot-password'),
+      headers: _headers,
       body: jsonEncode({'email': email}),
     );
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      _token = data['access_token'];
-      _adultId = data['adult_id'];
-      return _adultId;
-    }
-    return null;
+    _jsonOrThrow(res);
+  }
+
+  /// Re-send the signup verification code (always 200, no enumeration).
+  Future<void> resendVerificationCode(String email) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/auth/resend-code'),
+      headers: _headers,
+      body: jsonEncode({'email': email}),
+    );
+    _jsonOrThrow(res);
+  }
+
+  /// Reset with the emailed code — auto-logs-in on success.
+  Future<String> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/auth/reset-password'),
+      headers: _headers,
+      body: jsonEncode(
+          {'email': email, 'code': code, 'new_password': newPassword}),
+    );
+    final data = _jsonOrThrow(res);
+    _adoptTokenResponse(data);
+    return _adultId!;
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/auth/change-password'),
+      headers: _headers,
+      body: jsonEncode({
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      }),
+    );
+    _jsonOrThrow(res);
+  }
+
+  /// Validate the stored session — returns account info, or throws 401.
+  Future<Map<String, dynamic>> me() async {
+    final res = await _client.get(
+      Uri.parse('$baseUrl/auth/me'),
+      headers: _headers,
+    );
+    final data = _jsonOrThrow(res);
+    _adultId = data['id'] as String?;
+    return data;
   }
 
   String? get adultId => _adultId;
@@ -67,26 +197,92 @@ class ApiClient {
     required String alias,
     required String ageBand,
     String targetLocale = 'ta-SG',
+    String homeLanguage = 'en',
   }) async {
     final res = await _client.post(
-      Uri.parse('$baseUrl/profiles?adult_id=${_adultId ?? "demo"}'),
+      Uri.parse('$baseUrl/profiles'),
       headers: _headers,
       body: jsonEncode({
         'alias': alias,
         'age_band': ageBand,
         'target_locale': targetLocale,
+        'home_language': homeLanguage,
       }),
     );
-    return ChildProfile.fromJson(jsonDecode(res.body));
+    return ChildProfile.fromJson(_jsonOrThrow(res));
+  }
+
+  Future<ChildProfile> updateProfile(
+    String profileId, {
+    String? alias,
+    String? ageBand,
+    String? homeLanguage,
+    String? targetLocale,
+  }) async {
+    final res = await _client.patch(
+      Uri.parse('$baseUrl/profiles/$profileId'),
+      headers: _headers,
+      body: jsonEncode({
+        if (alias != null) 'alias': alias,
+        if (ageBand != null) 'age_band': ageBand,
+        if (homeLanguage != null) 'home_language': homeLanguage,
+        if (targetLocale != null) 'target_locale': targetLocale,
+      }),
+    );
+    return ChildProfile.fromJson(_jsonOrThrow(res));
+  }
+
+  /// Upload a profile picture (jpeg/png ≤5 MB) → the served photo URL.
+  Future<String> uploadProfilePhoto({
+    required String profileId,
+    required List<int> imageBytes,
+    String contentType = 'image/jpeg',
+  }) async {
+    final req = http.MultipartRequest(
+        'POST', Uri.parse('$baseUrl/profiles/$profileId/photo'));
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.files.add(http.MultipartFile.fromBytes(
+      'photo',
+      imageBytes,
+      filename: 'photo.${contentType.split('/').last}',
+      contentType: MediaType.parse(contentType),
+    ));
+    final streamed = await req.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    final data = _jsonOrThrow(res);
+    return data['photo_url'] as String;
+  }
+
+  /// Absolute URL for a profile photo path returned by the API.
+  String photoUrl(String apiPath) {
+    final origin = baseUrl.replaceFirst(RegExp(r'/api/v1/?$'), '');
+    return '$origin$apiPath';
   }
 
   Future<List<ChildProfile>> getProfiles() async {
     final res = await _client.get(
-      Uri.parse('$baseUrl/profiles?adult_id=${_adultId ?? "demo"}'),
+      Uri.parse('$baseUrl/profiles'),
       headers: _headers,
     );
     final list = jsonDecode(res.body) as List;
     return list.map((e) => ChildProfile.fromJson(e)).toList();
+  }
+
+  // ── Community Events ──────────────────────────────────────────────────
+
+  Future<List<CommunityEvent>> getEvents({String language = ''}) async {
+    final query = language.isEmpty ? '' : '?language=$language';
+    final res = await _client.get(
+      Uri.parse('$baseUrl/events$query'),
+      headers: _headers,
+    );
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, _detail(res, 'Events unavailable'));
+    }
+    final list = jsonDecode(res.body) as List;
+    return list
+        .map((e) => CommunityEvent.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   // ── Moments ───────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/app_state.dart';
+import 'screens/auth/login_screen.dart';
 import 'screens/parent_home.dart';
 import 'services/api_client.dart';
 import 'theme/app_theme.dart';
@@ -43,7 +44,8 @@ class TaleLahApp extends StatelessWidget {
   }
 }
 
-/// Gate that waits for initialization then shows parent home.
+/// Gate that routes on auth state: spinner while restoring the session,
+/// Login when there is none, ParentHome once signed in.
 class SplashGate extends StatelessWidget {
   const SplashGate({super.key});
 
@@ -52,6 +54,10 @@ class SplashGate extends StatelessWidget {
     final app = context.watch<AppState>();
 
     if (!app.isLoggedIn) {
+      // Session restore finished without a login → show the Login screen.
+      if (!app.isInitializing && app.initError == null) {
+        return const LoginScreen();
+      }
       final hasError = app.initError != null;
       return Container(
         decoration: const BoxDecoration(gradient: TGradients.page),
