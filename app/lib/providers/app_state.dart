@@ -35,6 +35,13 @@ class AppState extends ChangeNotifier {
   StoryPackageSummary? _latestPackage;
   StoryPackageSummary? get latestPackage => _latestPackage;
 
+  // ── Capture/generation failure — the UI must always surface this ────
+  String? _captureError;
+  String? get captureError => _captureError;
+  void clearCaptureError() {
+    _captureError = null;
+  }
+
   // ── Approved story + media manifest (F4) ────────────────────────
   ApprovedStory? _approvedStory;
   ApprovedStory? get approvedStory => _approvedStory;
@@ -44,11 +51,23 @@ class AppState extends ChangeNotifier {
 
   // ── Init ──────────────────────────────────────────────────────────────
 
+  /// Splash gate state — the UI must never spin forever. On failure we
+  /// expose [initError] so SplashGate can show a message + Retry button.
+  bool _isInitializing = false;
+  String? _initError;
+  bool get isInitializing => _isInitializing;
+  String? get initError => _initError;
+
   Future<void> initialize() async {
     // Auto-register a demo user for hackathon
+    _isInitializing = true;
+    _initError = null;
+    notifyListeners();
     try {
       final healthOk = await api.checkHealth();
-      if (!healthOk) return;
+      if (!healthOk) {
+        throw ApiException(503, "Can't reach TaleLah right now.");
+      }
       _adultId = await api.register(
         email: 'demo@talelah.app',
         displayName: 'Demo Parent',
@@ -61,9 +80,15 @@ class AppState extends ChangeNotifier {
       if (_profiles.isNotEmpty) {
         _activeProfile = _profiles.first;
       }
+      _isInitializing = false;
       notifyListeners();
     } catch (e) {
       debugPrint('Init error: $e');
+      _isInitializing = false;
+      _initError = e is ApiException
+          ? e.detail
+          : "Can't reach TaleLah right now. Check your connection and try again.";
+      notifyListeners();
     }
   }
 
@@ -151,6 +176,7 @@ class AppState extends ChangeNotifier {
     _currentAgent = '';
     _pendingClarification = null;
     _clarifyPackageId = null;
+    _captureError = null;
     _generationStatus = capturingStatus;
     notifyListeners();
 
@@ -171,6 +197,7 @@ class AppState extends ChangeNotifier {
       _generationStatus = 'Streaming progress...';
       notifyListeners();
 
+      var pipelineError = '';
       await for (final event in api.streamPackageEvents(packageId)) {
         _progressPct = event.progressPct;
         _currentAgent = event.agent;
@@ -187,9 +214,14 @@ class AppState extends ChangeNotifier {
         } else if (event.type == 'generation_complete') {
           _generationStatus = 'Complete!';
         } else if (event.type == 'error') {
-          _generationStatus = 'Error: ${event.error}';
+          pipelineError = event.error;
         }
         notifyListeners();
+      }
+
+      // Pipeline reported failure over SSE — surface it, never end silent.
+      if (pipelineError.isNotEmpty) {
+        throw ApiException(500, pipelineError);
       }
 
       // 4. Fetch final package summary
@@ -211,7 +243,12 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       _isGenerating = false;
       _pendingClarification = null;
-      _generationStatus = 'Error: $e';
+      _generationStatus = '';
+      // Friendly detail for API errors, generic otherwise — the home
+      // screen shows this the moment generation stops.
+      _captureError = e is ApiException
+          ? e.detail
+          : 'Something went wrong — please try again';
       notifyListeners();
     }
   }
@@ -234,7 +271,10 @@ class AppState extends ChangeNotifier {
     try {
       await api.clarifyPackage(pkgId, answer.trim());
     } catch (e) {
-      _generationStatus = 'Error: $e';
+      _generationStatus = '';
+      _captureError = e is ApiException
+          ? e.detail
+          : 'Something went wrong — please try again';
       _isGenerating = false;
       notifyListeners();
     }

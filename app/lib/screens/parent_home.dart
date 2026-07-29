@@ -50,6 +50,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final topPad = MediaQuery.of(context).padding.top;
+    _maybeShowCaptureError(app);
 
     return Container(
       decoration: const BoxDecoration(gradient: TGradients.page),
@@ -70,14 +71,6 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   const SizedBox(height: 12),
                   _buildMomentCapture(app),
                   const SizedBox(height: 24),
-                  if (app.isGenerating) ...[
-                    if (app.pendingClarification != null) ...[
-                      _buildClarificationCard(app),
-                      const SizedBox(height: 24),
-                    ],
-                    _buildProgress(app),
-                    const SizedBox(height: 24),
-                  ],
                   if (app.latestPackage != null && !app.isGenerating) ...[
                     _buildSectionTitle('Story Ready', 'Review & play together'),
                     const SizedBox(height: 12),
@@ -93,7 +86,76 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               bottom: MediaQuery.of(context).padding.bottom + 16,
               child: _buildBottomNav(app),
             ),
+            // Generation overlay — progress can never be scrolled out of
+            // sight; covers the whole screen incl. the bottom nav.
+            if (app.isGenerating) _buildGenerationOverlay(app),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Capture/generation failures must never end silent — surface the
+  /// friendly message the moment AppState reports one.
+  void _maybeShowCaptureError(AppState app) {
+    final message = app.captureError;
+    if (message == null) return;
+    app.clearCaptureError();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: TColors.ink,
+          duration: const Duration(seconds: 5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              const Text('😔', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  /// Full-screen dimmed overlay shown while the story is being woven —
+  /// voice, photo and text all land here so the parent always sees
+  /// what's happening (and the F3 question when the pipeline pauses).
+  Widget _buildGenerationOverlay(AppState app) {
+    return Positioned.fill(
+      child: Container(
+        color: TColors.ink.withValues(alpha: 0.55),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (app.pendingClarification != null) ...[
+                    _buildClarificationCard(app),
+                    const SizedBox(height: 16),
+                  ],
+                  _buildProgress(app),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -664,7 +726,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            '${app.progressPct.toStringAsFixed(0)}% complete',
+            app.progressPct > 0
+                ? '${app.progressPct.toStringAsFixed(0)}% complete'
+                : 'Sending your moment…',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.55),
               fontSize: 12,
@@ -675,7 +739,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
-              value: app.progressPct / 100,
+              // Indeterminate while uploading/transcribing (0%) — the bar
+              // must always visibly move so the parent knows work is live.
+              value: app.progressPct > 0 ? app.progressPct / 100 : null,
               minHeight: 10,
               backgroundColor: Colors.white.withValues(alpha: 0.10),
               valueColor:

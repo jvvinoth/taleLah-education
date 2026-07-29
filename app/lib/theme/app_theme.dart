@@ -1,7 +1,12 @@
 /// TaleLah Design System — warm storybook look drawn from the myna logo:
 /// ink navy, scarf teal, book gold, coral accents on a cream canvas.
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+/// Bundled, offline-safe type. NotoSans covers Latin (UI + Malay); the fallback
+/// chain fills Tamil and Simplified-Chinese glyphs so narration never renders
+/// as tofu boxes and nothing is fetched from a CDN at runtime.
+const String kFontFamily = 'NotoSans';
+const List<String> kFontFallback = ['NotoSansTamil', 'NotoSansSC'];
 
 class TColors {
   // Brand — sampled from the TaleLah myna logo
@@ -123,8 +128,13 @@ class TaleLahTheme {
       scaffoldBackgroundColor: Colors.transparent,
     );
 
-    final textTheme = GoogleFonts.plusJakartaSansTextTheme(base.textTheme)
-        .apply(bodyColor: TColors.ink, displayColor: TColors.ink);
+    final textTheme = base.textTheme
+        .apply(
+          fontFamily: kFontFamily,
+          bodyColor: TColors.ink,
+          displayColor: TColors.ink,
+        )
+        .apply(fontFamilyFallback: kFontFallback);
 
     return base.copyWith(
       textTheme: textTheme,
@@ -140,7 +150,9 @@ class TaleLahTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          textStyle: GoogleFonts.plusJakartaSans(
+          textStyle: const TextStyle(
+            fontFamily: kFontFamily,
+            fontFamilyFallback: kFontFallback,
             fontWeight: FontWeight.w700,
             fontSize: 16,
           ),

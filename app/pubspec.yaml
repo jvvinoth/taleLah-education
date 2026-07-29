@@ -17,7 +17,6 @@ dependencies:
   record: ^5.1.2
   image_picker: ^1.1.2
   http_parser: ^4.0.2
-  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -37,6 +36,20 @@ flutter:
 
   assets:
     - assets/images/
+
+  # Bundled fonts (SIL OFL) — offline-safe coverage for every locale.
+  # NotoSans covers Latin (UI + ms-SG), NotoSansTamil covers ta-SG,
+  # NotoSansSC covers zh-SG. Variable fonts: one file spans all weights.
+  fonts:
+    - family: NotoSans
+      fonts:
+        - asset: assets/fonts/NotoSans.ttf
+    - family: NotoSansTamil
+      fonts:
+        - asset: assets/fonts/NotoSansTamil.ttf
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC.ttf
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

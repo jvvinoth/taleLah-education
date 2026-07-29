@@ -1,7 +1,8 @@
 /// Device simulator frame — desktop web browsers only.
-/// Shows the app inside a phone or tablet frame with portrait/landscape
-/// switching for demos. On native mobile AND mobile browsers (iOS/Android
-/// user agents) the app renders full-bleed and none of this UI appears.
+/// Shows the app inside a portrait phone or tablet frame for demos.
+/// TaleLah is a portrait-first app, so no landscape mode is offered.
+/// On native mobile AND mobile browsers (iOS/Android user agents) the
+/// app renders full-bleed and none of this UI appears.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'app_theme.dart';
@@ -18,7 +19,6 @@ class MobileFrame extends StatefulWidget {
 
 class _MobileFrameState extends State<MobileFrame> {
   _SimDevice _device = _SimDevice.phone;
-  bool _landscape = false;
 
   // Logical device sizes (portrait) — iPhone 14 / iPad Air class.
   static const Size _phoneSize = Size(390, 844);
@@ -40,18 +40,14 @@ class _MobileFrameState extends State<MobileFrame> {
     }
   }
 
-  Size get _logicalSize {
-    final base = _device == _SimDevice.phone ? _phoneSize : _tabletSize;
-    return _landscape ? Size(base.height, base.width) : base;
-  }
+  Size get _logicalSize =>
+      _device == _SimDevice.phone ? _phoneSize : _tabletSize;
 
   EdgeInsets get _simPadding {
     if (_device == _SimDevice.tablet) {
       return const EdgeInsets.only(top: 28, bottom: 16);
     }
-    return _landscape
-        ? const EdgeInsets.only(left: 36, top: 12, bottom: 16)
-        : const EdgeInsets.only(top: 36, bottom: 20);
+    return const EdgeInsets.only(top: 36, bottom: 20);
   }
 
   @override
@@ -162,31 +158,39 @@ class _MobileFrameState extends State<MobileFrame> {
   }
 
   Widget _notch() {
-    final pill = Container(
-      width: _landscape ? 26 : 110,
-      height: _landscape ? 110 : 26,
-      decoration: BoxDecoration(
-        color: const Color(0xFF232D3A),
-        borderRadius: BorderRadius.circular(20),
+    return Positioned(
+      top: 10,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          width: 110,
+          height: 26,
+          decoration: BoxDecoration(
+            color: const Color(0xFF232D3A),
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
       ),
     );
-    return _landscape
-        ? Positioned(left: 10, top: 0, bottom: 0, child: Center(child: pill))
-        : Positioned(top: 10, left: 0, right: 0, child: Center(child: pill));
   }
 
   Widget _cameraDot() {
-    final dot = Container(
-      width: 10,
-      height: 10,
-      decoration: const BoxDecoration(
-        color: Color(0xFF10161F),
-        shape: BoxShape.circle,
+    return Positioned(
+      top: 6,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          width: 10,
+          height: 10,
+          decoration: const BoxDecoration(
+            color: Color(0xFF10161F),
+            shape: BoxShape.circle,
+          ),
+        ),
       ),
     );
-    return _landscape
-        ? Positioned(left: 6, top: 0, bottom: 0, child: Center(child: dot))
-        : Positioned(top: 6, left: 0, right: 0, child: Center(child: dot));
   }
 
   // ── Simulator controls ────────────────────────────────────────────────
@@ -224,36 +228,6 @@ class _MobileFrameState extends State<MobileFrame> {
             label: 'Tablet',
             selected: _device == _SimDevice.tablet,
             onTap: () => setState(() => _device = _SimDevice.tablet),
-          ),
-          Container(
-            width: 1,
-            height: 22,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            color: TColors.ink.withValues(alpha: 0.10),
-          ),
-          Tooltip(
-            message:
-                _landscape ? 'Switch to portrait' : 'Switch to landscape',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => setState(() => _landscape = !_landscape),
-              child: Container(
-                padding: const EdgeInsets.all(9),
-                decoration: BoxDecoration(
-                  color: _landscape
-                      ? TColors.teal.withValues(alpha: 0.14)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Icon(
-                  Icons.screen_rotation_rounded,
-                  size: 18,
-                  color: _landscape
-                      ? TColors.teal
-                      : TColors.ink.withValues(alpha: 0.55),
-                ),
-              ),
-            ),
           ),
         ],
         ),

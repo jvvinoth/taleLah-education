@@ -52,6 +52,7 @@ class SplashGate extends StatelessWidget {
     final app = context.watch<AppState>();
 
     if (!app.isLoggedIn) {
+      final hasError = app.initError != null;
       return Container(
         decoration: const BoxDecoration(gradient: TGradients.page),
         child: Scaffold(
@@ -80,14 +81,20 @@ class SplashGate extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 36),
-                const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    color: TColors.teal,
-                    strokeWidth: 3,
+                if (hasError)
+                  _RetryPanel(
+                    message: app.initError!,
+                    onRetry: app.initialize,
+                  )
+                else
+                  const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      color: TColors.teal,
+                      strokeWidth: 3,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -96,5 +103,63 @@ class SplashGate extends StatelessWidget {
     }
 
     return const ParentHomeScreen();
+  }
+}
+
+/// Splash error state — a clear message plus a Retry button so a failed
+/// backend health check / register never leaves the user on a dead spinner.
+class _RetryPanel extends StatelessWidget {
+  const _RetryPanel({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: TColors.ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 20),
+          GestureDetector(
+            onTap: onRetry,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+              decoration: BoxDecoration(
+                gradient: TGradients.mint,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: TShadows.glowTeal,
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'Retry',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

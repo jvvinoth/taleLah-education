@@ -239,6 +239,9 @@ class ApprovedStory {
   final String handoffPromptTargetLang;
   final String handoffResponseSuggestion;
   final String familyVoiceMode; // F9 — confident_speaker | learning_parent
+  final String speakingGoal;
+  final String targetPhrase;
+  final List<String> targetWords;
   final List<MediaAsset> manifest;
 
   ApprovedStory({
@@ -253,6 +256,9 @@ class ApprovedStory {
     this.handoffPromptTargetLang = '',
     this.handoffResponseSuggestion = '',
     this.familyVoiceMode = 'confident_speaker',
+    this.speakingGoal = '',
+    this.targetPhrase = '',
+    this.targetWords = const [],
     this.manifest = const [],
   });
 
@@ -270,6 +276,7 @@ class ApprovedStory {
     final media = pkg['media'] as Map<String, dynamic>? ?? {};
     final language = pkg['language'] as Map<String, dynamic>? ?? {};
     final familyVoice = pkg['family_voice'] as Map<String, dynamic>? ?? {};
+    final plan = pkg['learning_plan'] as Map<String, dynamic>? ?? {};
     return ApprovedStory(
       packageId: pkg['id'] as String? ?? '',
       locale: language['locale'] as String? ?? 'ta-SG',
@@ -289,6 +296,12 @@ class ApprovedStory {
       familyVoiceMode: familyVoice['mode'] as String? ??
           handoff['mode'] as String? ??
           'confident_speaker',
+      speakingGoal: plan['speaking_goal'] as String? ?? '',
+      targetPhrase: plan['target_phrase'] as String? ?? '',
+      targetWords: (plan['target_words'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       manifest: (media['manifest'] as List<dynamic>?)
               ?.map((e) => MediaAsset.fromJson(e as Map<String, dynamic>))
               .toList() ??

@@ -1,6 +1,6 @@
 /// Device simulator (web demo frame) — verifies the desktop-web-only
-/// phone/tablet + portrait/landscape controls actually resize the app's
-/// MediaQuery. Run with: flutter test --platform chrome
+/// phone/tablet controls actually resize the app's MediaQuery.
+/// Run with: flutter test --platform chrome
 ///
 /// On the VM (non-web) this suite is skipped: the simulator must never
 /// activate off desktop web, which is itself asserted here.
@@ -57,7 +57,6 @@ void main() {
       await _withPlatform(tester, TargetPlatform.iOS, () async {
         expect(find.text('Phone'), findsNothing);
         expect(find.text('Tablet'), findsNothing);
-        expect(find.byIcon(Icons.screen_rotation_rounded), findsNothing);
       });
     });
 
@@ -67,12 +66,11 @@ void main() {
       await _withPlatform(tester, TargetPlatform.macOS, () async {
         expect(find.text('Phone'), findsOneWidget);
         expect(find.text('Tablet'), findsOneWidget);
-        expect(find.byIcon(Icons.screen_rotation_rounded), findsOneWidget);
         expect(_SizeProbe.lastSize, const Size(390, 844));
       });
     });
 
-    testWidgets('desktop web: tablet + rotate + back to phone landscape',
+    testWidgets('desktop web: switch to tablet and back to phone',
         (tester) async {
       if (!kIsWeb) return;
       await _withPlatform(tester, TargetPlatform.macOS, () async {
@@ -80,16 +78,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(_SizeProbe.lastSize, const Size(820, 1180));
 
-        await tester.tap(find.byIcon(Icons.screen_rotation_rounded));
-        await tester.pumpAndSettle();
-        expect(_SizeProbe.lastSize, const Size(1180, 820));
-
         await tester.tap(find.text('Phone'));
-        await tester.pumpAndSettle();
-        expect(_SizeProbe.lastSize, const Size(844, 390));
-
-        // Rotate back to portrait
-        await tester.tap(find.byIcon(Icons.screen_rotation_rounded));
         await tester.pumpAndSettle();
         expect(_SizeProbe.lastSize, const Size(390, 844));
       });
