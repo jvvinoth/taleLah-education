@@ -10,6 +10,27 @@ from .interfaces import ASRProvider, TTSProvider
 
 logger = logging.getLogger(__name__)
 
+
+def _google_credentials(credentials_json: str = "", credentials_path: str = ""):
+    """Build service-account credentials from inline JSON (Railway env var) or a
+    file path (local dev). Returns None to fall back to Application Default
+    Credentials. Never logs or persists the secret material."""
+    from google.oauth2 import service_account
+
+    if credentials_json:
+        import json
+        return service_account.Credentials.from_service_account_info(
+            json.loads(credentials_json)
+        )
+    if credentials_path:
+        import os
+        if os.path.exists(credentials_path):
+            return service_account.Credentials.from_service_account_file(
+                credentials_path
+            )
+    return None
+
+
 # Malay voice options
 GOOGLE_MALAY_VOICES = {
     "ms-female": "ms-MY-Wavenet-A",
@@ -21,18 +42,19 @@ GOOGLE_MALAY_VOICES = {
 class GoogleTTSProvider(TTSProvider):
     """Google Cloud Text-to-Speech — Malay narration."""
 
-    def __init__(self, credentials_path: str = "", project_id: str = ""):
+    def __init__(self, credentials_path: str = "", project_id: str = "",
+                 credentials_json: str = ""):
         self.credentials_path = credentials_path
+        self.credentials_json = credentials_json
         self.project_id = project_id
         self._client = None
 
     def _get_client(self):
         if self._client is None:
-            import os
-            if self.credentials_path:
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = self.credentials_path
             from google.cloud import texttospeech
-            self._client = texttospeech.TextToSpeechClient()
+            self._client = texttospeech.TextToSpeechClient(
+                credentials=_google_credentials(self.credentials_json, self.credentials_path)
+            )
             self._module = texttospeech
         return self._client
 
@@ -87,18 +109,19 @@ class GoogleTTSProvider(TTSProvider):
 class GoogleASRProvider(ASRProvider):
     """Google Cloud Speech-to-Text — Malay transcription."""
 
-    def __init__(self, credentials_path: str = "", project_id: str = ""):
+    def __init__(self, credentials_path: str = "", project_id: str = "",
+                 credentials_json: str = ""):
         self.credentials_path = credentials_path
+        self.credentials_json = credentials_json
         self.project_id = project_id
         self._client = None
 
     def _get_client(self):
         if self._client is None:
-            import os
-            if self.credentials_path:
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = self.credentials_path
             from google.cloud import speech
-            self._client = speech.SpeechClient()
+            self._client = speech.SpeechClient(
+                credentials=_google_credentials(self.credentials_json, self.credentials_path)
+            )
             self._module = speech
         return self._client
 

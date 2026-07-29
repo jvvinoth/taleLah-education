@@ -103,10 +103,11 @@ async def startup():
         )
         logger.info("✅ CosyVoice TTS initialized")
 
-    if settings.google_application_credentials:
+    if settings.google_credentials_json or settings.google_application_credentials:
         try:
             tts_registry["google"] = GoogleTTSProvider(
                 credentials_path=settings.google_application_credentials,
+                credentials_json=settings.google_credentials_json,
                 project_id=settings.google_cloud_project,
             )
             logger.info("✅ Google TTS initialized")

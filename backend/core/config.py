@@ -35,8 +35,11 @@ class Settings(BaseSettings):
     # Sarvam AI — Tamil speech
     sarvam_api_key: str = ""
 
-    # Google Cloud — Malay speech
+    # Google Cloud — Malay speech + multilingual moment ASR.
+    # On a host without a filesystem (Railway) supply the whole JSON inline via
+    # GOOGLE_CREDENTIALS_JSON; locally the file path is used as a fallback.
     google_application_credentials: str = "./google-credentials.json"
+    google_credentials_json: str = ""
     google_cloud_project: str = ""
 
     # Cloudflare R2 — object storage

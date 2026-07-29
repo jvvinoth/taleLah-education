@@ -144,11 +144,14 @@ def _get_asr(provider_name: str):
             base_url=settings.dashscope_base_url,
         )
         return _asr_providers[provider_name]
-    if provider_name == "google" and settings.google_application_credentials:
+    if provider_name == "google" and (
+        settings.google_credentials_json or settings.google_application_credentials
+    ):
         try:
             from ...adapters.google_provider import GoogleASRProvider
             _asr_providers[provider_name] = GoogleASRProvider(
                 credentials_path=settings.google_application_credentials,
+                credentials_json=settings.google_credentials_json,
                 project_id=settings.google_cloud_project,
             )
             return _asr_providers[provider_name]
