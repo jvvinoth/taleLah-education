@@ -1,0 +1,137 @@
+{
+  "_comment": "Curated recurring SG kids language programmes — real organisers and registration pages. The Community Scout agent rolls these forward to concrete upcoming dates and (with an LLM) writes warm parent-facing descriptions.",
+  "events": [
+    {
+      "id": "seed_nlb_tamil_storytime",
+      "title": "Tamil Storytime for Little Ones",
+      "description": "Librarians bring Tamil picture books alive with songs and actions. Drop in with your child and enjoy stories read aloud in Tamil.",
+      "language": "ta",
+      "venue": "National Library / Regional Libraries",
+      "age_range": "4-6",
+      "organizer": "National Library Board",
+      "registration_url": "https://www.nlb.gov.sg/main/whats-on",
+      "is_free": true,
+      "recurrence": { "day": "SAT", "time": "10:30 AM" }
+    },
+    {
+      "id": "seed_nlb_chinese_storytime",
+      "title": "Chinese Storytime 华语讲故事",
+      "description": "Weekly Mandarin storytelling session with picture books, rhymes and simple crafts for preschoolers.",
+      "language": "zh",
+      "venue": "National Library / Regional Libraries",
+      "age_range": "4-6",
+      "organizer": "National Library Board",
+      "registration_url": "https://www.nlb.gov.sg/main/whats-on",
+      "is_free": true,
+      "recurrence": { "day": "SAT", "time": "11:00 AM" }
+    },
+    {
+      "id": "seed_nlb_malay_storytime",
+      "title": "Malay Storytime — Mari Dengar Cerita!",
+      "description": "Stories, songs and rhymes in Malay for young children and their families.",
+      "language": "ms",
+      "venue": "National Library / Regional Libraries",
+      "age_range": "4-6",
+      "organizer": "National Library Board",
+      "registration_url": "https://www.nlb.gov.sg/main/whats-on",
+      "is_free": true,
+      "recurrence": { "day": "SUN", "time": "10:30 AM" }
+    },
+    {
+      "id": "seed_sinda_tamil_reading",
+      "title": "SINDA Family Reading Club (Tamil)",
+      "description": "Guided Tamil reading and word games for children with a parent — build a home reading habit together.",
+      "language": "ta",
+      "venue": "SINDA, 1 Beatty Road",
+      "age_range": "5-8",
+      "organizer": "SINDA",
+      "registration_url": "https://www.sinda.org.sg",
+      "is_free": true,
+      "recurrence": { "day": "SUN", "time": "2:00 PM" }
+    },
+    {
+      "id": "seed_cdac_chinese_workshop",
+      "title": "CDAC Little Readers Workshop 小小读书会",
+      "description": "Interactive Chinese reading circle with games and craft — children practise speaking Mandarin in a fun small group.",
+      "language": "zh",
+      "venue": "CDAC Centres (island-wide)",
+      "age_range": "5-8",
+      "organizer": "CDAC",
+      "registration_url": "https://www.cdac.org.sg",
+      "is_free": false,
+      "recurrence": { "day": "SAT", "time": "2:00 PM" }
+    },
+    {
+      "id": "seed_mendaki_malay_club",
+      "title": "MENDAKI Cerita Club",
+      "description": "Storytelling and language play in Malay — children explore words through drama and song with trained facilitators.",
+      "language": "ms",
+      "venue": "Wisma MENDAKI, 51 Kee Sun Avenue",
+      "age_range": "4-8",
+      "organizer": "Yayasan MENDAKI",
+      "registration_url": "https://www.mendaki.org.sg",
+      "is_free": true,
+      "recurrence": { "day": "SAT", "time": "10:00 AM" }
+    },
+    {
+      "id": "seed_ihc_family_saturday",
+      "title": "Indian Heritage Centre Family Day",
+      "description": "Culture and craft morning — kids discover Tamil heritage through hands-on activities and gallery trails.",
+      "language": "ta",
+      "venue": "Indian Heritage Centre, Campbell Lane",
+      "age_range": "4-8",
+      "organizer": "Indian Heritage Centre",
+      "registration_url": "https://www.indianheritage.gov.sg",
+      "is_free": true,
+      "recurrence": { "day": "SUN", "time": "11:00 AM" }
+    },
+    {
+      "id": "seed_sccc_kids_mandarin",
+      "title": "SCCC Kids' Cultural Playdate 文化同乐会",
+      "description": "Mandarin-friendly cultural workshops — calligraphy, opera masks and festival crafts for young families.",
+      "language": "zh",
+      "venue": "Singapore Chinese Cultural Centre, 1 Straits Boulevard",
+      "age_range": "4-8",
+      "organizer": "Singapore Chinese Cultural Centre",
+      "registration_url": "https://singaporeccc.org.sg",
+      "is_free": false,
+      "recurrence": { "day": "SUN", "time": "2:30 PM" }
+    },
+    {
+      "id": "seed_mhc_malay_craft",
+      "title": "Malay Heritage Craft Corner",
+      "description": "Family craft session inspired by Malay traditions — children learn everyday Malay words while they make and play.",
+      "language": "ms",
+      "venue": "Malay Heritage Centre, Kampong Gelam",
+      "age_range": "4-8",
+      "organizer": "Malay Heritage Centre",
+      "registration_url": "https://www.malayheritage.gov.sg",
+      "is_free": true,
+      "recurrence": { "day": "SUN", "time": "3:00 PM" }
+    },
+    {
+      "id": "seed_esplanade_playtime",
+      "title": "Esplanade PLAYtime! Family Theatre",
+      "description": "Theatre made for the very young — multilingual shows where children join in the storytelling.",
+      "language": "en",
+      "venue": "Esplanade — Theatres on the Bay",
+      "age_range": "4-6",
+      "organizer": "Esplanade",
+      "registration_url": "https://www.esplanade.com/festivals-and-series/playtime",
+      "is_free": false,
+      "recurrence": { "day": "SAT", "time": "11:00 AM" }
+    },
+    {
+      "id": "seed_pa_mother_tongue",
+      "title": "Community Club Mother Tongue Playgroup",
+      "description": "Neighbourhood playgroup sessions in Tamil, Mandarin and Malay — check your nearest community club for the language offered.",
+      "language": "en",
+      "venue": "People's Association Community Clubs (island-wide)",
+      "age_range": "4-8",
+      "organizer": "People's Association",
+      "registration_url": "https://www.onepa.gov.sg",
+      "is_free": false,
+      "recurrence": { "day": "WED", "time": "4:00 PM" }
+    }
+  ]
+}

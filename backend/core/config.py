@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     # ElevenLabs — P1 voice clone
     elevenlabs_api_key: str = ""
 
+    # Resend — transactional email (signup verification, password reset).
+    # Without an API key the code is logged instead of emailed (dev/CI mode).
+    resend_api_key: str = ""
+    resend_from_email: str = "TaleLah <hello@talelah.app>"
+
     # Media storage
     media_storage_path: str = "./media"
     max_photo_size_mb: int = 10

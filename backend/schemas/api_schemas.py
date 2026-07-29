@@ -23,8 +23,38 @@ class AdultRegister(BaseModel):
     preferred_ui_language: str = "en"
 
 
+class AdultSignup(BaseModel):
+    email: str = Field(
+        min_length=5, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    )
+    password: str = Field(min_length=8, max_length=128)
+    display_name: str = Field(min_length=1, max_length=60)
+    preferred_ui_language: str = "en"
+
+
+class EmailVerify(BaseModel):
+    email: str
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
 class AdultLogin(BaseModel):
     email: str
+    password: str = Field(min_length=1, max_length=128)
+
+
+class ForgotPassword(BaseModel):
+    email: str
+
+
+class ResetPassword(BaseModel):
+    email: str
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePassword(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -33,15 +63,30 @@ class TokenResponse(BaseModel):
     adult_id: str
 
 
+class MeResponse(BaseModel):
+    id: str
+    email: str
+    display_name: str
+    email_verified: bool
+
+
 # ── Child Profile ──────────────────────────────────────────────────────────
 
 class ChildProfileCreate(BaseModel):
     alias: str = Field(min_length=1, max_length=50)
     age_band: str = Field(pattern=r"^[4-8](-[5-8])?$")
     target_locale: str = "ta-SG"
+    home_language: str = "en"
     understanding_level: ConfidenceLevel = ConfidenceLevel.EMERGING
     speaking_level: ConfidenceLevel = ConfidenceLevel.EMERGING
     interests: list[str] = []
+
+
+class ChildProfileUpdate(BaseModel):
+    alias: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    age_band: Optional[str] = Field(default=None, pattern=r"^[4-8](-[5-8])?$")
+    home_language: Optional[str] = None
+    target_locale: Optional[str] = None
 
 
 class ChildProfileResponse(BaseModel):
@@ -49,9 +94,28 @@ class ChildProfileResponse(BaseModel):
     alias: str
     age_band: str
     target_locale: str
+    home_language: str = "en"
+    photo_url: Optional[str] = None
     understanding_level: ConfidenceLevel
     speaking_level: ConfidenceLevel
     interests: list[str]
+
+
+# ── Community Events ───────────────────────────────────────────────────────
+
+class CommunityEvent(BaseModel):
+    """One language-based kids event a family can join."""
+    id: str
+    title: str
+    description: str = ""
+    language: str = "en"  # ta / zh / ms / en
+    date: str = ""        # ISO date, e.g. "2026-08-01"
+    time: str = ""        # e.g. "10:30 AM"
+    venue: str = ""
+    age_range: str = ""   # e.g. "4-8"
+    organizer: str = ""
+    registration_url: str = ""
+    is_free: bool = True
 
 
 # ── Family Speaker ─────────────────────────────────────────────────────────

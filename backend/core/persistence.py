@@ -40,6 +40,7 @@ DOC_TABLES = (
     "story_sessions",
     "saved_memories",
     "traces",
+    "events",
 )
 
 
@@ -91,6 +92,14 @@ class Persistence:
                     "  PRIMARY KEY (package_id, filename)"
                     ")"
                 )
+                await conn.execute(
+                    "CREATE TABLE IF NOT EXISTS profile_photos ("
+                    "  profile_id TEXT PRIMARY KEY,"
+                    "  content_type TEXT NOT NULL,"
+                    "  data BYTEA NOT NULL,"
+                    "  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+                    ")"
+                )
             logger.info("💾 Neon persistence ON — tables ready")
             return True
         except Exception as e:
@@ -140,6 +149,23 @@ class Persistence:
         self._spawn(
             self._execute(
                 "DELETE FROM media_blobs WHERE package_id = $1", package_id
+            )
+        )
+
+    def save_photo(self, profile_id: str, content_type: str, data: bytes) -> None:
+        """Mirror a child profile photo (fallback store when R2 is off)."""
+        if not self.enabled:
+            return
+        self._spawn(
+            self._execute(
+                "INSERT INTO profile_photos (profile_id, content_type, data) "
+                "VALUES ($1, $2, $3) "
+                "ON CONFLICT (profile_id) DO UPDATE "
+                "SET content_type = EXCLUDED.content_type, "
+                "    data = EXCLUDED.data, updated_at = now()",
+                profile_id,
+                content_type,
+                data,
             )
         )
 
@@ -198,6 +224,16 @@ class Persistence:
         for r in rows:
             out.setdefault(r["package_id"], {})[r["filename"]] = bytes(r["data"])
         return out
+
+    async def fetch_photos(self) -> dict:
+        """All profile photos → {profile_id: (content_type, bytes)}."""
+        if not self.enabled:
+            return {}
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT profile_id, content_type, data FROM profile_photos"
+            )
+        return {r["profile_id"]: (r["content_type"], bytes(r["data"])) for r in rows}
 
 
 persistence = Persistence()

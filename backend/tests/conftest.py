@@ -26,3 +26,7 @@ settings.dashscope_api_key = ""
 settings.sarvam_api_key = ""
 settings.google_application_credentials = ""
 settings.elevenlabs_api_key = ""
+# Email + object storage stay on their offline fallbacks (log the code / DB blob).
+settings.resend_api_key = ""
+settings.r2_access_key_id = ""
+settings.r2_secret_access_key = ""

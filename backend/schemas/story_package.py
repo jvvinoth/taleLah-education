@@ -240,6 +240,8 @@ class ChildProfile(BaseModel):
     alias: str
     age_band: str  # "4-5", "6-7", "7-8"
     target_locale: str = "ta-SG"
+    home_language: str = "en"  # language spoken at home (en/ta/zh/ms)
+    photo_url: Optional[str] = None  # API path served by the backend
     understanding_level: ConfidenceLevel = ConfidenceLevel.EMERGING
     speaking_level: ConfidenceLevel = ConfidenceLevel.EMERGING
     interests: list[str] = []

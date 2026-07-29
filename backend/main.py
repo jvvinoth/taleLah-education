@@ -6,6 +6,7 @@ Built for the Qoder × Alibaba Cloud SG 2026 hackathon.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -57,9 +58,12 @@ async def startup():
     pack_loader.load_all()
 
     # ── Neon persistence — hydrate stores so state survives redeploys ─────
-    from .api.routes.v1 import hydrate_stores
+    from .api.routes.v1 import ensure_demo_adult, hydrate_stores
     if await persistence.init():
         await hydrate_stores()
+
+    # Seed the well-known demo account ("Try demo" button + pipeline tests)
+    ensure_demo_adult()
 
     # ── Initialize providers ──────────────────────────────────────────────
     from .adapters.dashscope_provider import DashScopeLLMProvider, DashScopeVisionProvider
@@ -135,6 +139,30 @@ async def startup():
     )
 
     orchestrator.register_agent(AgentName.GROWTH_COACH, GrowthCoachAgent(llm=llm))
+
+    # ── Community Scout — refresh language-based kids events on startup + daily
+    from .agents.community_scout import CommunityScoutAgent
+    from .api.routes import v1 as v1_module
+
+    scout = CommunityScoutAgent(llm=llm)
+
+    async def _refresh_events() -> None:
+        try:
+            events = await scout.refresh()
+            v1_module._events.clear()
+            for event in events:
+                v1_module._events[event.id] = event
+                persistence.save("events", event.id, event)
+        except Exception as e:  # noqa: BLE001 — events must never break startup
+            logger.warning(f"⚠️  Community Scout refresh failed: {e}")
+
+    async def _daily_events_loop() -> None:
+        while True:
+            await asyncio.sleep(24 * 3600)
+            await _refresh_events()
+
+    asyncio.create_task(_refresh_events())
+    asyncio.create_task(_daily_events_loop())
 
     logger.info("✅ All 6 agents registered with real providers")
     logger.info(f"📁 Language packs: {', '.join(pack_loader.available_locales())}")

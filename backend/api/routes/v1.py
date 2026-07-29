@@ -7,9 +7,11 @@ import hashlib
 import hmac
 import logging
 import random
+import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
+import bcrypt
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -21,23 +23,37 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import Response, StreamingResponse
+from jose import JWTError
+from jose import jwt as jose_jwt
 
 from ...core.config import settings
 from ...core.language_packs import pack_loader
 from ...core.orchestrator import AgentName, TraceEntry, orchestrator
 from ...core.persistence import persistence
 from ...core.speech import match_intent
+from ...adapters.r2_storage import r2_storage
+from ...adapters.resend_provider import send_reset_email, send_verification_email
 from ...safety.gate import safety_gate
 from ...schemas.api_schemas import (
+    AdultLogin,
+    AdultRegister,
+    AdultSignup,
+    ChangePassword,
     ChildProfileCreate,
     ChildProfileResponse,
+    ChildProfileUpdate,
     ClarifyRequest,
+    CommunityEvent,
     DifficultyUpdate,
+    EmailVerify,
     FactsUpdate,
+    ForgotPassword,
     MemorySaveRequest,
+    MeResponse,
     MomentCreateText,
     MomentResponse,
     RegenerateRequest,
+    ResetPassword,
     SessionStart,
     SessionSummary,
     SpeechFallbackChoice,
@@ -46,8 +62,6 @@ from ...schemas.api_schemas import (
     StoryPackageResponse,
     TargetWordSwap,
     TokenResponse,
-    AdultRegister,
-    AdultLogin,
 )
 from ...schemas.story_package import (
     ChildProfile,
@@ -80,6 +94,12 @@ _memories: dict[str, SavedMemory] = {}
 # F4 — pre-generated audio blobs: package_id → {filename: bytes}
 _media_blobs: dict[str, dict[str, bytes]] = {}
 
+# Community events (refreshed by the Community Scout agent)
+_events: dict[str, CommunityEvent] = {}
+
+# Child profile photos: profile_id → (content_type, bytes)
+_profile_photos: dict[str, tuple[str, bytes]] = {}
+
 
 async def hydrate_stores() -> None:
     """Reload persisted state from Neon on startup (write-through cache).
@@ -98,6 +118,10 @@ async def hydrate_stores() -> None:
             _sessions[k] = StorySession.model_validate(v)
         for k, v in (await persistence.fetch_all("saved_memories")).items():
             _memories[k] = SavedMemory.model_validate(v)
+        for k, v in (await persistence.fetch_all("events")).items():
+            _events[k] = CommunityEvent.model_validate(v)
+        for k, (ctype, blob) in (await persistence.fetch_photos()).items():
+            _profile_photos[k] = (ctype, blob)
         _media_blobs.update(await persistence.fetch_blobs())
 
         packages = await persistence.fetch_all("story_packages")
@@ -190,17 +214,55 @@ def _wav_duration_seconds(data: bytes) -> float:
         return 0.0
 
 
-# ── Auth (HMAC-signed bearer tokens) ──────────────────────────────────────
+# ── Auth (JWT bearer tokens + email/password accounts) ──────────────────────
 #
-# Sprint 0 shipped guessable `demo_{adult_id}` tokens plus a spoofable
-# `?adult_id=` query param, so any caller could read/write another family's
-# children, moments and stories (IDOR). Tokens are now signed with the app
-# secret and the adult identity is derived ONLY from a verified token —
-# never from a client-supplied field.
+# Accounts are email + bcrypt-hashed password, verified by a 6-digit code
+# emailed via Resend before the first login. Sessions are HS256 JWTs with an
+# expiry; the legacy HMAC token format is still accepted during transition so
+# live sessions don't break on deploy. The adult identity is derived ONLY
+# from a verified token — never from a client-supplied field.
+
+CODE_TTL = timedelta(minutes=15)
+MAX_CODE_ATTEMPTS = 5
+
+
+def _hash_password(password: str) -> str:
+    # bcrypt ignores everything past 72 bytes — truncate explicitly so newer
+    # bcrypt releases (which raise instead) behave identically.
+    pw = password.encode()[:72]
+    return bcrypt.hashpw(pw, bcrypt.gensalt()).decode()
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode()[:72], password_hash.encode())
+    except ValueError:
+        return False
+
+
+def _new_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _hash_code(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+def _norm_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _find_adult_by_email(email: str) -> tuple[str, dict] | None:
+    email = _norm_email(email)
+    # sorted() keeps the pick deterministic across restarts/hydration order.
+    for aid in sorted(_adults):
+        if _adults[aid]["email"] == email:
+            return aid, _adults[aid]
+    return None
 
 
 def _sign(adult_id: str) -> str:
-    """HMAC-SHA256 of the adult id, truncated — unforgeable without the secret."""
+    """Legacy HMAC signature — kept so pre-JWT sessions stay valid."""
     return hmac.new(
         settings.secret_key.encode(),
         adult_id.encode(),
@@ -209,15 +271,27 @@ def _sign(adult_id: str) -> str:
 
 
 def _make_token(adult_id: str) -> str:
-    return f"{adult_id}.{_sign(adult_id)}"
+    """HS256 JWT with expiry from settings."""
+    expires = datetime.utcnow() + timedelta(
+        minutes=settings.access_token_expire_minutes
+    )
+    return jose_jwt.encode(
+        {"sub": adult_id, "exp": expires},
+        settings.secret_key,
+        algorithm="HS256",
+    )
 
 
 def _adult_from_token(token: str) -> str | None:
-    """Return the adult id iff the token's signature verifies, else None."""
+    """Adult id iff the token verifies (JWT first, then legacy HMAC)."""
     token = token.strip()
-    # Back-compat: accept the legacy demo_ prefix only if it still verifies as
-    # an unsigned id (it never will once tokens are signed), so this is inert.
-    if "." not in token:
+    try:
+        payload = jose_jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        return payload.get("sub")
+    except JWTError:
+        pass
+    # Legacy format: "adult_id.hmac32" (exactly one dot)
+    if token.count(".") != 1:
         return None
     adult_id, _, sig = token.rpartition(".")
     if not adult_id or not sig:
@@ -225,6 +299,29 @@ def _adult_from_token(token: str) -> str | None:
     if not hmac.compare_digest(sig, _sign(adult_id)):
         return None
     return adult_id
+
+
+DEMO_EMAIL = "demo@talelah.app"
+DEMO_PASSWORD = "demo1234"  # judge/demo account — not a real user secret
+
+
+def ensure_demo_adult() -> None:
+    """Seed the verified demo account (idempotent; called on startup)."""
+    found = _find_adult_by_email(DEMO_EMAIL)
+    if found:
+        aid, adult = found
+        adult.setdefault("password_hash", _hash_password(DEMO_PASSWORD))
+        adult["email_verified"] = True
+    else:
+        aid = f"adult_{uuid.uuid4().hex[:12]}"
+        _adults[aid] = {
+            "id": aid,
+            "email": DEMO_EMAIL,
+            "display_name": "Demo Parent",
+            "password_hash": _hash_password(DEMO_PASSWORD),
+            "email_verified": True,
+        }
+    persistence.save("adults", aid, _adults[aid])
 
 
 async def require_adult(authorization: str = Header(default="")) -> str:
@@ -268,32 +365,179 @@ def _require_session(adult_id: str, session_id: str) -> StorySession:
 
 @router.post("/auth/register", response_model=TokenResponse)
 async def register(data: AdultRegister):
-    # Idempotent by email — the app auto-registers on every load, so a repeat
-    # register must return the SAME adult or every session orphans its data
-    # (profiles/stories vanish on refresh, capture buttons stay disabled).
-    # sorted() keeps the pick deterministic across restarts/hydration order.
-    existing = sorted(
-        aid for aid, adult in _adults.items() if adult["email"] == data.email
-    )
-    if existing:
-        return TokenResponse(access_token=_make_token(existing[0]), adult_id=existing[0])
+    # Legacy demo-tier entry (no password) — kept for the "Try demo" flow and
+    # tests. Idempotent by email, but it can NEVER hand out a session for an
+    # account that set a password (that would be a full account takeover);
+    # the well-known demo account is the one deliberate exception.
+    email = _norm_email(data.email)
+    found = _find_adult_by_email(email)
+    if found:
+        aid, adult = found
+        if adult.get("password_hash") and email != DEMO_EMAIL:
+            raise HTTPException(409, "This email has an account — please log in")
+        return TokenResponse(access_token=_make_token(aid), adult_id=aid)
 
     adult_id = f"adult_{uuid.uuid4().hex[:12]}"
     _adults[adult_id] = {
         "id": adult_id,
-        "email": data.email,
+        "email": email,
         "display_name": data.display_name,
+        "email_verified": True,  # demo-tier: no email loop, no password login
     }
     persistence.save("adults", adult_id, _adults[adult_id])
     return TokenResponse(access_token=_make_token(adult_id), adult_id=adult_id)
 
 
+@router.post("/auth/signup")
+async def signup(data: AdultSignup):
+    """Create an account (or claim an unverified/legacy one) and email a
+    6-digit verification code. Login only works after verification."""
+    email = _norm_email(data.email)
+    found = _find_adult_by_email(email)
+    if found:
+        aid, adult = found
+        if adult.get("password_hash") and adult.get("email_verified"):
+            raise HTTPException(
+                409, "This email already has an account — please log in"
+            )
+        # Unverified re-signup or legacy password-less account being claimed:
+        # verifying the emailed code proves ownership either way.
+        adult["display_name"] = data.display_name
+        adult["password_hash"] = _hash_password(data.password)
+        adult["email_verified"] = False
+    else:
+        aid = f"adult_{uuid.uuid4().hex[:12]}"
+        _adults[aid] = {
+            "id": aid,
+            "email": email,
+            "display_name": data.display_name,
+            "password_hash": _hash_password(data.password),
+            "email_verified": False,
+        }
+        adult = _adults[aid]
+
+    code = _new_code()
+    adult["verify_code_hash"] = _hash_code(code)
+    adult["verify_expires"] = (datetime.utcnow() + CODE_TTL).isoformat()
+    adult["verify_attempts"] = 0
+    persistence.save("adults", aid, adult)
+    await send_verification_email(email, data.display_name, code)
+    return {"message": "Verification code sent — check your inbox", "email": email}
+
+
+def _check_code(adult: dict, prefix: str, code: str) -> str | None:
+    """Validate a 6-digit code against `{prefix}_code_hash`. Returns an error
+    message, or None when the code is good. Mutates the attempt counter."""
+    if not adult.get(f"{prefix}_code_hash"):
+        return "No pending code for this email — request a new one"
+    if adult.get(f"{prefix}_attempts", 0) >= MAX_CODE_ATTEMPTS:
+        return "Too many attempts — request a new code"
+    try:
+        expires = datetime.fromisoformat(adult.get(f"{prefix}_expires", ""))
+    except ValueError:
+        return "Code expired — request a new one"
+    if datetime.utcnow() > expires:
+        return "Code expired — request a new one"
+    if not hmac.compare_digest(_hash_code(code), adult[f"{prefix}_code_hash"]):
+        adult[f"{prefix}_attempts"] = adult.get(f"{prefix}_attempts", 0) + 1
+        return "Incorrect code — check the email and try again"
+    return None
+
+
+def _clear_code(adult: dict, prefix: str) -> None:
+    for key in (f"{prefix}_code_hash", f"{prefix}_expires", f"{prefix}_attempts"):
+        adult.pop(key, None)
+
+
+@router.post("/auth/verify-email", response_model=TokenResponse)
+async def verify_email(data: EmailVerify):
+    found = _find_adult_by_email(data.email)
+    if not found:
+        raise HTTPException(400, "No pending verification for this email")
+    aid, adult = found
+    error = _check_code(adult, "verify", data.code)
+    if error:
+        persistence.save("adults", aid, adult)  # keep the attempt counter
+        raise HTTPException(400, error)
+    adult["email_verified"] = True
+    _clear_code(adult, "verify")
+    persistence.save("adults", aid, adult)
+    return TokenResponse(access_token=_make_token(aid), adult_id=aid)
+
+
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(data: AdultLogin):
-    for aid, adult in _adults.items():
-        if adult["email"] == data.email:
-            return TokenResponse(access_token=_make_token(aid), adult_id=aid)
-    raise HTTPException(404, "Adult not found")
+    found = _find_adult_by_email(data.email)
+    # One indistinguishable error for unknown email / no password / mismatch.
+    if (
+        not found
+        or not found[1].get("password_hash")
+        or not _verify_password(data.password, found[1]["password_hash"])
+    ):
+        raise HTTPException(401, "Incorrect email or password")
+    aid, adult = found
+    if not adult.get("email_verified"):
+        raise HTTPException(403, "Please verify your email first — check your inbox")
+    return TokenResponse(access_token=_make_token(aid), adult_id=aid)
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(data: ForgotPassword):
+    # Always 200 — the response must never reveal whether an account exists.
+    found = _find_adult_by_email(data.email)
+    if found and found[1].get("password_hash"):
+        aid, adult = found
+        code = _new_code()
+        adult["reset_code_hash"] = _hash_code(code)
+        adult["reset_expires"] = (datetime.utcnow() + CODE_TTL).isoformat()
+        adult["reset_attempts"] = 0
+        persistence.save("adults", aid, adult)
+        await send_reset_email(
+            adult["email"], adult.get("display_name", "there"), code
+        )
+    return {"message": "If that email has an account, a reset code is on its way"}
+
+
+@router.post("/auth/reset-password", response_model=TokenResponse)
+async def reset_password(data: ResetPassword):
+    found = _find_adult_by_email(data.email)
+    if not found:
+        raise HTTPException(400, "No pending reset for this email")
+    aid, adult = found
+    error = _check_code(adult, "reset", data.code)
+    if error:
+        persistence.save("adults", aid, adult)
+        raise HTTPException(400, error)
+    adult["password_hash"] = _hash_password(data.new_password)
+    adult["email_verified"] = True  # the emailed code proved ownership
+    _clear_code(adult, "reset")
+    persistence.save("adults", aid, adult)
+    return TokenResponse(access_token=_make_token(aid), adult_id=aid)
+
+
+@router.post("/auth/change-password")
+async def change_password(
+    data: ChangePassword, adult_id: str = Depends(require_adult)
+):
+    adult = _adults[adult_id]
+    if not adult.get("password_hash") or not _verify_password(
+        data.current_password, adult["password_hash"]
+    ):
+        raise HTTPException(401, "Current password is incorrect")
+    adult["password_hash"] = _hash_password(data.new_password)
+    persistence.save("adults", adult_id, adult)
+    return {"message": "Password updated"}
+
+
+@router.get("/auth/me", response_model=MeResponse)
+async def me(adult_id: str = Depends(require_adult)):
+    adult = _adults[adult_id]
+    return MeResponse(
+        id=adult_id,
+        email=adult["email"],
+        display_name=adult.get("display_name", ""),
+        email_verified=bool(adult.get("email_verified")),
+    )
 
 
 # ── Child Profiles ─────────────────────────────────────────────────────────
@@ -312,32 +556,133 @@ async def create_profile(
         understanding_level=data.understanding_level,
         speaking_level=data.speaking_level,
         interests=data.interests,
+        home_language=data.home_language,
     )
     _profiles[profile_id] = profile
     persistence.save("child_profiles", profile_id, profile)
+    return _profile_response(profile)
+
+
+def _profile_response(p: ChildProfile) -> ChildProfileResponse:
     return ChildProfileResponse(
-        id=profile.id,
-        alias=profile.alias,
-        age_band=profile.age_band,
-        target_locale=profile.target_locale,
-        understanding_level=profile.understanding_level,
-        speaking_level=profile.speaking_level,
-        interests=profile.interests,
+        id=p.id, alias=p.alias, age_band=p.age_band,
+        target_locale=p.target_locale,
+        understanding_level=p.understanding_level,
+        speaking_level=p.speaking_level, interests=p.interests,
+        home_language=p.home_language, photo_url=p.photo_url,
     )
 
 
 @router.get("/profiles", response_model=list[ChildProfileResponse])
 async def list_profiles(adult_id: str = Depends(require_adult)):
     return [
-        ChildProfileResponse(
-            id=p.id, alias=p.alias, age_band=p.age_band,
-            target_locale=p.target_locale,
-            understanding_level=p.understanding_level,
-            speaking_level=p.speaking_level, interests=p.interests,
-        )
+        _profile_response(p)
         for p in _profiles.values()
         if p.adult_id == adult_id and not p.deleted_at
     ]
+
+
+@router.patch("/profiles/{profile_id}", response_model=ChildProfileResponse)
+async def update_profile(
+    profile_id: str,
+    data: ChildProfileUpdate,
+    adult_id: str = Depends(require_adult),
+):
+    profile = _require_profile(adult_id, profile_id)
+    if data.alias is not None:
+        profile.alias = data.alias
+    if data.age_band is not None:
+        profile.age_band = data.age_band
+    if data.home_language is not None:
+        profile.home_language = data.home_language
+    if data.target_locale is not None:
+        profile.target_locale = data.target_locale
+    persistence.save("child_profiles", profile_id, profile)
+    return _profile_response(profile)
+
+
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+_PHOTO_TYPES = {"image/jpeg", "image/png"}
+
+
+@router.post("/profiles/{profile_id}/photo")
+async def upload_profile_photo(
+    profile_id: str,
+    photo: UploadFile = File(...),
+    adult_id: str = Depends(require_adult),
+):
+    """Profile picture upload — R2 when configured, Postgres blob fallback."""
+    profile = _require_profile(adult_id, profile_id)
+    content_type = (photo.content_type or "").lower()
+    if content_type not in _PHOTO_TYPES:
+        raise HTTPException(415, "Please upload a JPEG or PNG image")
+    data = await photo.read()
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(413, "Photo too large — max 5 MB")
+    if not data:
+        raise HTTPException(422, "Empty upload")
+
+    stored_r2 = await r2_storage.put_bytes(
+        f"profiles/{profile_id}.jpg", data, content_type
+    )
+    # Keep the local/Postgres copy even when R2 works — it doubles as a cache
+    # for the in-process read path and survives R2 misconfiguration.
+    _profile_photos[profile_id] = (content_type, data)
+    persistence.save_photo(profile_id, content_type, data)
+
+    profile.photo_url = f"/api/v1/profiles/{profile_id}/photo"
+    persistence.save("child_profiles", profile_id, profile)
+    return {
+        "photo_url": profile.photo_url,
+        "storage": "r2" if stored_r2 else "postgres",
+    }
+
+
+@router.get("/profiles/{profile_id}/photo")
+async def get_profile_photo(profile_id: str):
+    """Serve a profile photo — unauthenticated like /media (unguessable id)."""
+    entry = _profile_photos.get(profile_id)
+    if entry is None:
+        blob = await r2_storage.get_bytes(f"profiles/{profile_id}.jpg")
+        if blob is None:
+            raise HTTPException(404, "Photo not found")
+        entry = ("image/jpeg", blob)
+        _profile_photos[profile_id] = entry
+    content_type, data = entry
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+# ── Community Events ───────────────────────────────────────────────────────
+
+@router.get("/events", response_model=list[CommunityEvent])
+async def list_events(
+    language: str = "",
+    age_band: str = "",
+    adult_id: str = Depends(require_adult),
+):
+    """Upcoming community events, soonest first, filterable by language."""
+    today = date.today().isoformat()
+    events = [e for e in _events.values() if e.date >= today]
+    if language:
+        events = [e for e in events if e.language == language]
+    if age_band:
+        events = [e for e in events if _age_overlap(e.age_range, age_band)]
+    events.sort(key=lambda e: (e.date, e.time))
+    return events
+
+
+def _age_overlap(event_range: str, age_band: str) -> bool:
+    """True when two 'lo-hi' age ranges overlap; permissive on bad input."""
+    try:
+        e_lo, e_hi = (int(x) for x in event_range.split("-"))
+        b_lo, b_hi = (int(x) for x in age_band.split("-"))
+        return e_lo <= b_hi and b_lo <= e_hi
+    except ValueError:
+        return True
 
 
 # ── Family Speaker ─────────────────────────────────────────────────────────
