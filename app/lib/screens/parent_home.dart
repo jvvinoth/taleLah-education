@@ -27,6 +27,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   // F5 — hands-free voice note capture (≤45 s, enforced again
   // server-side). LiveMic auto-stops when the parent pauses.
   final LiveMic _momentMic = LiveMic();
+  final Earcons _earcons = Earcons();
   bool _voiceOverlayVisible = false;
 
   static const _locales = [
@@ -38,6 +39,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   @override
   void dispose() {
     _momentMic.dispose();
+    _earcons.dispose();
     _textController.dispose();
     _clarifyController.dispose();
     super.dispose();
@@ -1100,10 +1102,19 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     }
     if (!mounted) return;
     setState(() => _voiceOverlayVisible = true);
+    // Playful "I'm listening" bubble — plays BEFORE recording starts so it
+    // isn't captured, then a short beat before we open the mic.
+    _earcons.start();
+    await Future.delayed(const Duration(milliseconds: 180));
+    if (!mounted) {
+      _momentMic.cancel();
+      return;
+    }
     final result = await _momentMic.listen(
       maxDuration: const Duration(seconds: 45),
-      silenceAfter: const Duration(milliseconds: 1400),
-      noSpeechTimeout: const Duration(seconds: 10),
+      // Gentler: a brief pause won't cut you off; ~2.5 s of quiet auto-ends.
+      silenceAfter: const Duration(milliseconds: 2500),
+      noSpeechTimeout: const Duration(seconds: 8),
     );
     if (!mounted) return;
     setState(() => _voiceOverlayVisible = false);
@@ -1112,6 +1123,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       _captureError("Couldn't hear anything — try again closer to the mic");
       return;
     }
+    _earcons.done(); // warm "got it" chime — plays after the mic has stopped
     // Transcribe (auto-detects English / Chinese / Tamil / Malay) and PREFILL
     // the text box — the parent reviews and edits, then taps Create.
     try {
@@ -1176,7 +1188,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 valueListenable: _momentMic.heardSpeech,
                 builder: (_, heard, __) => Text(
                   heard
-                      ? 'Got it — keep going, I\'ll stop when you pause'
+                      ? "Great — keep going, or tap Done when you're finished"
                       : 'Tell me about your moment today…',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -1188,34 +1200,61 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 ),
               ),
               const Spacer(),
+              // Primary — finish now and use what was captured. Enabled once
+              // we've actually heard speech (so you can't submit silence).
+              ValueListenableBuilder<bool>(
+                valueListenable: _momentMic.heardSpeech,
+                builder: (_, heard, __) => AnimatedOpacity(
+                  opacity: heard ? 1.0 : 0.45,
+                  duration: const Duration(milliseconds: 250),
+                  child: GestureDetector(
+                    onTap: heard ? () => _momentMic.finishNow() : null,
+                    child: Container(
+                      height: 60,
+                      padding: const EdgeInsets.symmetric(horizontal: 46),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.16),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_rounded,
+                              color: Color(0xFF243039), size: 24),
+                          SizedBox(width: 8),
+                          Text(
+                            'Done',
+                            style: TextStyle(
+                              color: Color(0xFF243039),
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
               Padding(
-                padding: const EdgeInsets.only(bottom: 28),
+                padding: const EdgeInsets.only(bottom: 26),
                 child: GestureDetector(
                   onTap: () => _momentMic.cancel(),
-                  child: Container(
-                    height: 56,
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.4)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.close_rounded,
-                            color: Colors.white, size: 22),
-                        SizedBox(width: 8),
-                        Text(
-                          'Cancel',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),

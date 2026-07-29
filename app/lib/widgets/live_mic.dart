@@ -13,6 +13,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
 
@@ -33,6 +34,7 @@ class LiveMic {
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _sub;
   StreamSubscription<Amplitude>? _ampSub;
+  VoidCallback? _requestFinish;
   Completer<LiveMicResult?>? _done;
   final BytesBuilder _pcm = BytesBuilder(copy: false);
 
@@ -105,6 +107,7 @@ class LiveMic {
       done.complete(LiveMicResult(wav, heardSpeech: heard));
     }
 
+    _requestFinish = finish;
     _sub = stream.listen((chunk) {
       if (done.isCompleted) return;
       final rms = _rms(chunk);
@@ -197,6 +200,9 @@ class LiveMic {
       done.complete(LiveMicResult(bytes, heardSpeech: speechStarted));
     }
 
+    _requestFinish = () {
+      finish();
+    };
     _ampSub = _recorder
         .onAmplitudeChanged(const Duration(milliseconds: 120))
         .listen((amp) {
@@ -225,6 +231,9 @@ class LiveMic {
     return done.future;
   }
 
+  /// Finish the current pass now (a "Done" tap) and return what's captured.
+  void finishNow() => _requestFinish?.call();
+
   /// Abort the current pass — the pending [listen] resolves to null.
   Future<void> cancel() async {
     final pending = _done;
@@ -240,6 +249,7 @@ class LiveMic {
     _sub = null;
     _ampSub?.cancel();
     _ampSub = null;
+    _requestFinish = null;
     _done = null;
     _recorder.stop().catchError((_) => null);
     level.value = 0;
@@ -282,6 +292,85 @@ class LiveMic {
     header.setUint16(22, 1, Endian.little); // mono
     header.setUint32(24, sampleRate, Endian.little);
     header.setUint32(28, sampleRate * 2, Endian.little);
+    header.setUint16(32, 2, Endian.little);
+    header.setUint16(34, 16, Endian.little);
+    str(36, 'data');
+    header.setUint32(40, pcm.length, Endian.little);
+    return Uint8List.fromList(header.buffer.asUint8List() + pcm);
+  }
+}
+
+/// Tiny synthesized earcons — a soft rising "bloop" when listening starts and
+/// a gentle two-note chime when it ends. Generated in code (no asset files) so
+/// it just works on web and mobile alike.
+class Earcons {
+  final AudioPlayer _player = AudioPlayer(playerId: 'talelah_earcon');
+  static const int _sr = 22050;
+
+  /// Playful rising bubble — "I'm listening".
+  Future<void> start() => _play(_sweep(360, 760, 0.15, vol: 0.30));
+
+  /// Warm two-note chime — "got it".
+  Future<void> done() => _play(_chime());
+
+  Future<void> _play(Uint8List wav) async {
+    try {
+      await _player.stop();
+      await _player.play(BytesSource(wav, mimeType: 'audio/wav'));
+    } catch (_) {
+      // Sound is a nicety — never let it block or break capture.
+    }
+  }
+
+  void dispose() => _player.dispose();
+
+  Uint8List _sweep(double f0, double f1, double seconds, {double vol = 0.3}) {
+    final n = (_sr * seconds).round();
+    final samples = Int16List(n);
+    var phase = 0.0;
+    for (var i = 0; i < n; i++) {
+      final p = i / n;
+      final f = f0 + (f1 - f0) * p;
+      phase += 2 * math.pi * f / _sr;
+      final env = math.sin(math.pi * p); // 0→1→0 bell — click-free
+      samples[i] = (math.sin(phase) * env * vol * 32767).round();
+    }
+    return _wrap(samples);
+  }
+
+  Uint8List _chime() {
+    final a = _sweep(660, 660, 0.11, vol: 0.26);
+    final b = _sweep(990, 990, 0.17, vol: 0.26);
+    // Concatenate the two notes (skip note b's 44-byte header).
+    final out = Uint8List(a.length + (b.length - 44));
+    out.setRange(0, a.length, a);
+    out.setRange(a.length, out.length, b.sublist(44));
+    final total = out.length - 44;
+    final bd = ByteData.sublistView(out);
+    bd.setUint32(4, 36 + total, Endian.little);
+    bd.setUint32(40, total, Endian.little);
+    return out;
+  }
+
+  Uint8List _wrap(Int16List samples) {
+    final pcm =
+        samples.buffer.asUint8List(samples.offsetInBytes, samples.lengthInBytes);
+    final header = ByteData(44);
+    void str(int o, String s) {
+      for (var i = 0; i < s.length; i++) {
+        header.setUint8(o + i, s.codeUnitAt(i));
+      }
+    }
+
+    str(0, 'RIFF');
+    header.setUint32(4, 36 + pcm.length, Endian.little);
+    str(8, 'WAVE');
+    str(12, 'fmt ');
+    header.setUint32(16, 16, Endian.little);
+    header.setUint16(20, 1, Endian.little);
+    header.setUint16(22, 1, Endian.little);
+    header.setUint32(24, _sr, Endian.little);
+    header.setUint32(28, _sr * 2, Endian.little);
     header.setUint16(32, 2, Endian.little);
     header.setUint16(34, 16, Endian.little);
     str(36, 'data');
