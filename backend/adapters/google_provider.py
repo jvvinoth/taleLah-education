@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 
+from .audio_format import sniff_audio_format
 from .interfaces import ASRProvider, TTSProvider
 
 logger = logging.getLogger(__name__)
@@ -114,13 +115,30 @@ class GoogleASRProvider(ASRProvider):
     def _transcribe_sync(self, audio_bytes: bytes, language: str, sample_rate: int) -> str:
         client = self._get_client()
         speech_mod = self._module
+        enc = speech_mod.RecognitionConfig.AudioEncoding
+
+        # Browser mic clips are webm/ogg-opus, not raw LINEAR16 wav — sniff the
+        # real container and pick the matching encoding so recognition works.
+        fmt = sniff_audio_format(audio_bytes)
+        encoding_map = {
+            "webm": enc.WEBM_OPUS,
+            "ogg": enc.OGG_OPUS,
+            "flac": enc.FLAC,
+            "mp3": enc.MP3,
+            "wav": enc.LINEAR16,
+        }
+        encoding = encoding_map.get(fmt, enc.ENCODING_UNSPECIFIED)
 
         audio = speech_mod.RecognitionAudio(content=audio_bytes)
-        config = speech_mod.RecognitionConfig(
-            encoding=speech_mod.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=sample_rate,
-            language_code=language,
-        )
+        config_kwargs = {
+            "encoding": encoding,
+            "language_code": language,
+        }
+        # Opus/WAV carry sample rate in the header; only send an explicit rate
+        # for raw LINEAR16 where Google cannot infer it.
+        if fmt == "wav":
+            config_kwargs["sample_rate_hertz"] = sample_rate
+        config = speech_mod.RecognitionConfig(**config_kwargs)
 
         response = client.recognize(config=config, audio=audio)
         transcript = ""

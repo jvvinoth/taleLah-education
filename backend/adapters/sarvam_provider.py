@@ -8,6 +8,7 @@ import logging
 
 import httpx
 
+from .audio_format import extension_for, mime_for, sniff_audio_format
 from .interfaces import ASRProvider, TTSProvider
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,10 @@ class SarvamASRProvider(ASRProvider):
         language: str = "ta-IN",
         sample_rate: int = 16000,
     ) -> str:
+        # Don't trust the client's filename — sniff the real container so
+        # webm/ogg mic recordings aren't mislabelled as wav (would 400/garble).
+        fmt = sniff_audio_format(audio_bytes)
+        filename = f"audio.{extension_for(fmt)}"
         # Sarvam expects file upload as multipart
         resp = await self._client.post(
             f"{SARVAM_API_URL}/speech-to-text",
@@ -96,7 +101,7 @@ class SarvamASRProvider(ASRProvider):
                 "model": "saarika:v2.5",
                 "language_code": language,
             },
-            files={"file": ("audio.wav", audio_bytes, "audio/wav")},
+            files={"file": (filename, audio_bytes, mime_for(fmt))},
         )
         resp.raise_for_status()
         data = resp.json()
