@@ -71,12 +71,14 @@ class StoryWeaverAgent(BaseAgent):
             self._record_provenance(package)
             return package
 
-        if self.llm:
+        # Pack-declared LLM — e.g. Tamil uses Sarvam for native quality
+        llm, llm_name = self._llm_for(package)
+        if llm:
             try:
                 facts_text = "\n".join([f"- {f.text}" for f in package.moment_facts])
                 plan = package.learning_plan
 
-                result = await self.llm.generate_json(
+                result = await llm.generate_json(
                     prompt=(
                         f"Child's real activity:\n{facts_text}\n\n"
                         f"Learning goal: {plan.speaking_goal if plan else 'Name colors and predict'}\n"
@@ -89,11 +91,11 @@ class StoryWeaverAgent(BaseAgent):
 
                 story = self._parse_story(result, package)
                 package.story = story
-                self._set_model_version(package, "story_weaver", "qwen-max")
-                logger.info(f"[StoryWeaver] Generated story via Qwen-Max: {story.title}")
+                self._set_model_version(package, "story_weaver", llm_name)
+                logger.info(f"[StoryWeaver] Generated story via {llm_name}: {story.title}")
 
             except Exception as e:
-                logger.error(f"[StoryWeaver] Qwen call failed, using fallback: {e}")
+                logger.error(f"[StoryWeaver] {llm_name} call failed, using fallback: {e}")
                 package.story = self._fallback_story()
                 self._set_model_version(package, "story_weaver", "fallback")
         else:

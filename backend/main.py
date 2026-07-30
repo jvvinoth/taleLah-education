@@ -68,7 +68,7 @@ async def startup():
 
     # ── Initialize providers ──────────────────────────────────────────────
     from .adapters.dashscope_provider import DashScopeLLMProvider, DashScopeVisionProvider
-    from .adapters.sarvam_provider import SarvamTTSProvider
+    from .adapters.sarvam_provider import SarvamLLMProvider, SarvamTTSProvider
     from .adapters.google_provider import GoogleTTSProvider
     from .adapters.cosyvoice_provider import CosyVoiceTTSProvider
 
@@ -83,6 +83,17 @@ async def startup():
         logger.info(f"✅ DashScope LLM initialized (model: {settings.qwen_model})")
     else:
         logger.warning("⚠️  No DashScope API key — agents will use fallback data")
+
+    # ── LLM registry — packs route story text per language (AC-08):
+    #    ta-SG → Sarvam-105B for native Tamil quality; zh/ms → Qwen-Max.
+    llm_registry: dict[str, object] = {}
+    if llm:
+        llm_registry["qwen"] = llm
+    if settings.sarvam_api_key:
+        llm_registry["sarvam"] = SarvamLLMProvider(
+            api_key=settings.sarvam_api_key, fallback=llm
+        )
+        logger.info("✅ Sarvam LLM initialized (model: sarvam-105b)")
 
     # Vision provider (Qwen-VL-Max via DashScope)
     vision: Optional[DashScopeVisionProvider] = None
@@ -129,8 +140,12 @@ async def startup():
 
     orchestrator.register_agent(AgentName.MOMENT_LENS, MomentLensAgent(llm=llm, vision=vision))
     orchestrator.register_agent(AgentName.LEARNING_PLANNER, LearningPlannerAgent(llm=llm))
-    orchestrator.register_agent(AgentName.STORY_WEAVER, StoryWeaverAgent(llm=llm))
-    orchestrator.register_agent(AgentName.LANGUAGE_GUARDIAN, LanguageGuardianAgent(llm=llm))
+    orchestrator.register_agent(
+        AgentName.STORY_WEAVER, StoryWeaverAgent(llm=llm, llm_registry=llm_registry)
+    )
+    orchestrator.register_agent(
+        AgentName.LANGUAGE_GUARDIAN, LanguageGuardianAgent(llm=llm, llm_registry=llm_registry)
+    )
 
     # Family Voice Director resolves its TTS provider per-locale from the active pack
     fallback_tts = next(iter(tts_registry.values()), None)

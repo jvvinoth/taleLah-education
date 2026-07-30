@@ -23,9 +23,24 @@ class BaseAgent(ABC):
         self,
         llm: Optional[LLMProvider] = None,
         vision: Optional[VisionProvider] = None,
+        llm_registry: Optional[dict[str, LLMProvider]] = None,
     ):
         self.llm = llm
         self.vision = vision
+        # provider name (from pack.providers.llm) → concrete LLM adapter
+        self.llm_registry = llm_registry or {}
+
+    def _llm_for(self, package: StoryPackage) -> tuple[Optional[LLMProvider], str]:
+        """Pack-declared LLM for this package's locale (AC-08) — e.g. Tamil
+        story text via Sarvam, Chinese/Malay via Qwen-Max. Falls back to the
+        default LLM when the pack has no routing or the provider is missing.
+        Returns (provider, provider_name) for provenance."""
+        from ..core.language_packs import pack_loader
+
+        pack = pack_loader.get(package.language.locale)
+        if pack and pack.providers.llm in self.llm_registry:
+            return self.llm_registry[pack.providers.llm], pack.providers.llm
+        return self.llm, "qwen-max" if self.llm else "fallback"
 
     @abstractmethod
     async def execute(self, package: StoryPackage) -> StoryPackage:

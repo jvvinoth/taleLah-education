@@ -14,7 +14,7 @@
       "provider": "google",
       "language": "ms-MY",
       "voice_id": "ms-MY-Wavenet-A",
-      "pace": 0.85
+      "pace": 0.8
     }
   },
   "guardian": {

@@ -49,6 +49,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   bool _readingTurn = false;
   bool _narrationPaused = false;
 
+  // Narration speed — playback multiplier over the storyteller-paced audio
+  // (generated at ~0.8 pace). Parents pick what their child follows best.
+  double _paceRate = 1.0;
+
   // F7 — hold-to-exit gate (AC-03): 3 s continuous press opens the parent gate
   Timer? _holdTimer;
   double _holdProgress = 0;
@@ -248,7 +252,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       return;
     }
     try {
-      await player.setPlaybackRate(1.0);
+      await player.setPlaybackRate(_paceRate);
       // Web: the seek-complete event may never fire (e.g. already at 0) —
       // never let it stall the narration.
       await player
@@ -580,9 +584,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       return;
     }
     try {
-      // Base narration is already generated at a storyteller pace (~0.85),
+      // Base narration is already generated at a storyteller pace (~0.8),
       // so the retry replay only dips a little further.
-      await player.setPlaybackRate(0.9);
+      await player.setPlaybackRate((0.9 * _paceRate).clamp(0.65, 1.5));
       await player
           .seek(Duration.zero)
           .timeout(const Duration(seconds: 2), onTimeout: () {});
@@ -1070,9 +1074,12 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     const SizedBox(height: 12),
 
                     // Who reads? — Mina narrates, or the child reads and
-                    // Mina listens (story scenes only).
+                    // Mina listens (story scenes only). Below it the parent
+                    // can tune how fast Mina tells the story.
                     if (_isStoryScene(_currentScene)) ...[
                       _readModeToggle(scene),
+                      const SizedBox(height: 8),
+                      _paceToggle(scene),
                       const SizedBox(height: 12),
                     ] else
                       const SizedBox(height: 10),
@@ -1220,6 +1227,16 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     );
   }
 
+  /// Parent picks the narration speed the child follows best — applies
+  /// immediately to the scene currently playing too.
+  void _setPaceRate(double rate) {
+    if (_paceRate == rate) return;
+    setState(() => _paceRate = rate);
+    final assetId = _scenes[_currentScene].assetId;
+    final player = assetId == null ? null : _players[assetId];
+    player?.setPlaybackRate(rate);
+  }
+
   /// Who reads this story — a two-way pill: Mina narrates, or the child
   /// reads by themself while Mina listens and appreciates.
   Widget _readModeToggle(_DemoScene scene) {
@@ -1237,6 +1254,30 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               () => _setIRead(false)),
           _modeChip(
               '🧒 I read', _iRead, scene.accent, () => _setIRead(true)),
+        ],
+      ),
+    );
+  }
+
+  /// Narration speed pill — 🐢 extra slow · 📖 story pace (default) · 🐇
+  /// brisker, on top of the 0.8-pace generated audio.
+  Widget _paceToggle(_DemoScene scene) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: TShadows.card,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _modeChip('🐢 Slower', _paceRate == 0.85, scene.accent,
+              () => _setPaceRate(0.85)),
+          _modeChip('📖 Story', _paceRate == 1.0, scene.accent,
+              () => _setPaceRate(1.0)),
+          _modeChip('🐇 Faster', _paceRate == 1.15, scene.accent,
+              () => _setPaceRate(1.15)),
         ],
       ),
     );
