@@ -1477,7 +1477,17 @@ async def start_session(data: SessionStart, adult_id: str = Depends(require_adul
     has_feedback = any(
         a.kind == "feedback" and a.url for a in pkg.media.manifest
     )
-    if not has_audio or not has_blobs or not has_feedback:
+    # Words to learn — backfill vocabulary for stories approved before the
+    # feature existed (one-time: persisted below with the regenerated blobs).
+    vocab_added = False
+    if not pkg.story.vocabulary:
+        guardian = orchestrator._agents.get(AgentName.LANGUAGE_GUARDIAN)
+        if guardian is not None:
+            try:
+                vocab_added = await guardian.ensure_vocabulary(pkg)
+            except Exception as e:
+                logger.warning(f"[F4] Vocabulary backfill failed for {pkg.id}: {e}")
+    if not has_audio or not has_blobs or not has_feedback or vocab_added:
         fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
         if fvd is not None:
             try:

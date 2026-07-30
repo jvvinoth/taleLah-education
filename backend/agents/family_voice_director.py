@@ -179,6 +179,13 @@ class FamilyVoiceDirectorAgent(BaseAgent):
             items.append(("handoff", "handoff", -1,
                           handoff.prompt, handoff.prompt_target_lang))
 
+        # Words to learn — Mina says each word so the child can repeat it
+        # (the chips on the story card). One asset per word: vocab_N.
+        for i, vw in enumerate(package.story.vocabulary):
+            if vw.word_target_lang:
+                items.append((f"vocab_{i}", "vocab", -1,
+                              vw.word, vw.word_target_lang))
+
         # Spoken feedback — Mina praises and gently corrects OUT LOUD, like a
         # parent would. Copy comes from the pack (AC-08); corrections teach
         # the scene's expected word without ever saying "wrong" (AC-04).

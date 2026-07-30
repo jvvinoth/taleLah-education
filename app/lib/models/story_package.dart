@@ -232,6 +232,25 @@ class ApprovedScene {
   }
 }
 
+/// A "word to learn" — Mina speaks it (vocab_N asset), the child repeats.
+class VocabWord {
+  final String word; // English
+  final String wordTargetLang;
+  final String romanised;
+
+  VocabWord({
+    required this.word,
+    this.wordTargetLang = '',
+    this.romanised = '',
+  });
+
+  factory VocabWord.fromJson(Map<String, dynamic> json) => VocabWord(
+        word: json['word'] as String? ?? '',
+        wordTargetLang: json['word_target_lang'] as String? ?? '',
+        romanised: json['romanised'] as String? ?? '',
+      );
+}
+
 /// F4 — the full approved story + media manifest for child mode.
 class ApprovedStory {
   final String packageId;
@@ -248,6 +267,7 @@ class ApprovedStory {
   final String speakingGoal;
   final String targetPhrase;
   final List<String> targetWords;
+  final List<VocabWord> vocabulary;
   final List<MediaAsset> manifest;
 
   ApprovedStory({
@@ -265,6 +285,7 @@ class ApprovedStory {
     this.speakingGoal = '',
     this.targetPhrase = '',
     this.targetWords = const [],
+    this.vocabulary = const [],
     this.manifest = const [],
   });
 
@@ -306,6 +327,10 @@ class ApprovedStory {
       targetPhrase: plan['target_phrase'] as String? ?? '',
       targetWords: (plan['target_words'] as List<dynamic>?)
               ?.map((e) => e as String)
+              .toList() ??
+          [],
+      vocabulary: (story['vocabulary'] as List<dynamic>?)
+              ?.map((e) => VocabWord.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       manifest: (media['manifest'] as List<dynamic>?)

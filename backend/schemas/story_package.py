@@ -129,6 +129,14 @@ class EndingPrompt(BaseModel):
     text: str = ""
 
 
+class VocabWord(BaseModel):
+    """One "word to learn" from the story — spoken by Mina, repeated by the
+    child. Native script is what the child sees; romanised helps the parent."""
+    word: str  # English
+    word_target_lang: str = ""
+    romanised: str = ""
+
+
 class Story(BaseModel):
     title: str = ""
     title_target_lang: str = ""
@@ -137,6 +145,8 @@ class Story(BaseModel):
     room_mission: RoomMission = RoomMission()
     family_handoff: FamilyHandoff = FamilyHandoff()
     ending_prompt: EndingPrompt = EndingPrompt()
+    # Words to learn — the learning plan's target words in the home language
+    vocabulary: list[VocabWord] = Field(default_factory=list)
 
 
 class NarrationSegment(BaseModel):
@@ -157,7 +167,7 @@ class MediaAsset(BaseModel):
     url is relative to the API prefix (e.g. media/{pkg}/{id}.wav);
     empty url == parent-read fallback (text + romanization)."""
     id: str
-    kind: str  # scene | mission | handoff
+    kind: str  # scene | mission | handoff | feedback | vocab
     scene_index: int = -1
     url: str = ""
     duration_ms: int = 0

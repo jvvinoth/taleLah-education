@@ -53,6 +53,11 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   // (generated at ~0.8 pace). Parents pick what their child follows best.
   double _paceRate = 1.0;
 
+  // Words to learn — tap a chip: Mina says the word, the child repeats,
+  // Mina celebrates. One word at a time; independent of the answer turns.
+  int _vocabActive = -1; // index into story.vocabulary
+  String _vocabPhase = 'idle'; // idle | speaking | listening | celebrate
+
   // F7 — hold-to-exit gate (AC-03): 3 s continuous press opens the parent gate
   Timer? _holdTimer;
   double _holdProgress = 0;
@@ -604,6 +609,65 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     _fallbackOptions = [];
     _readingTurn = false;
     _narrationPaused = false;
+    _vocabActive = -1;
+    _vocabPhase = 'idle';
+  }
+
+  // ── Words to learn — speak → repeat → praise ────────────────────
+
+  /// Child taps a word chip: Mina says the word slowly, then opens her
+  /// ears for the child to repeat it, then celebrates the try. Every
+  /// attempt is a win — never scored, never corrected (AC-04).
+  Future<void> _practiceWord(int i) async {
+    if (_vocabPhase == 'speaking' || _vocabPhase == 'listening') return;
+    _autoListenTimer?.cancel();
+    for (final p in _players.values) {
+      p.stop();
+    }
+    setState(() {
+      _vocabActive = i;
+      _vocabPhase = 'speaking';
+    });
+    final player = _players['vocab_$i'];
+    if (player != null) {
+      try {
+        // A touch slower than the story — single-word modelling.
+        await player.setPlaybackRate((0.9 * _paceRate).clamp(0.65, 1.5));
+        await player
+            .seek(Duration.zero)
+            .timeout(const Duration(seconds: 2), onTimeout: () {});
+        await player.resume();
+        await player.onPlayerComplete.first
+            .timeout(const Duration(seconds: 10));
+      } catch (e) {
+        debugPrint('Vocab play failed for vocab_$i: $e');
+      }
+    }
+    if (!mounted || _vocabActive != i) return;
+
+    // Now the child's turn — short single-word window.
+    setState(() => _vocabPhase = 'listening');
+    if (await _liveMic.hasPermission()) {
+      await _liveMic.listen(
+        maxDuration: const Duration(seconds: 6),
+        silenceAfter: const Duration(milliseconds: 1200),
+        noSpeechTimeout: const Duration(seconds: 5),
+      );
+    } else {
+      // No mic — give the child a beat to say it out loud anyway.
+      await Future.delayed(const Duration(seconds: 3));
+    }
+    if (!mounted || _vocabActive != i) return;
+
+    setState(() => _vocabPhase = 'celebrate');
+    _playFeedback('celebrate');
+    Timer(const Duration(milliseconds: 2600), () {
+      if (!mounted || _vocabActive != i) return;
+      setState(() {
+        _vocabActive = -1;
+        _vocabPhase = 'idle';
+      });
+    });
   }
 
   // ── F7 · child-mode lockdown (AC-03) ──────────────────────
@@ -1068,6 +1132,11 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                             ),
                             textAlign: TextAlign.center,
                           ),
+                          // ✨ Words to learn — tap a word: Mina says it,
+                          // the child repeats, Mina celebrates.
+                          if (_isStoryScene(_currentScene) &&
+                              (_story?.vocabulary.isNotEmpty ?? false))
+                            _vocabSection(scene),
                         ],
                       ),
                     ),
@@ -1303,6 +1372,102 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
             fontWeight: FontWeight.w800,
             color: selected ? Colors.white : TColors.inkSoft,
           ),
+        ),
+      ),
+    );
+  }
+
+  /// ✨ Words to learn — highlighted chips on the story card. Tap one:
+  /// Mina speaks the home-language word, the child repeats it, Mina
+  /// celebrates. Native script big, English meaning small.
+  Widget _vocabSection(_DemoScene scene) {
+    final vocab = _story?.vocabulary ?? [];
+    return Column(
+      children: [
+        const SizedBox(height: 14),
+        Container(height: 1, color: TColors.mist),
+        const SizedBox(height: 12),
+        Text(
+          '✨ WORDS TO LEARN — TAP & SAY IT!',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
+            color: scene.accent,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var i = 0; i < vocab.length; i++) _vocabChip(i, scene),
+          ],
+        ),
+        if (_vocabActive >= 0) ...[
+          const SizedBox(height: 10),
+          Text(
+            _vocabPhase == 'speaking'
+                ? '🔊 Listen…'
+                : _vocabPhase == 'listening'
+                    ? '🎤 Your turn — say it!'
+                    : '🌟 Great job!',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: scene.accent,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _vocabChip(int i, _DemoScene scene) {
+    final vw = _story!.vocabulary[i];
+    final active = _vocabActive == i;
+    final celebrated = active && _vocabPhase == 'celebrate';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _practiceWord(i),
+      child: AnimatedContainer(
+        duration: _anim(200),
+        // ≥56 dp hit target via padding (AC-03)
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: active
+              ? scene.accent.withValues(alpha: 0.15)
+              : TColors.lemon.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active ? scene.accent : TColors.gold.withValues(alpha: 0.5),
+            width: active ? 2 : 1.2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              celebrated
+                  ? '🌟 ${vw.wordTargetLang}'
+                  : '🔊 ${vw.wordTargetLang}',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: active ? scene.accent : TColors.ink,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              vw.word,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: TColors.inkFaint,
+              ),
+            ),
+          ],
         ),
       ),
     );

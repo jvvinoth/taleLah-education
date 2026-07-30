@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 
 from ..core.language_packs import LanguagePack, pack_loader
-from ..schemas.story_package import StoryPackage, ValidationStatus
+from ..schemas.story_package import StoryPackage, ValidationStatus, VocabWord
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -198,6 +198,16 @@ class LanguageGuardianAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"[LanguageGuardian] Handoff translation failed: {e}")
 
+        # Words to learn — translate the plan's target words so Mina can teach
+        # them one by one (child taps a word chip → hears it → repeats it).
+        if package.learning_plan and not package.story.vocabulary:
+            try:
+                package.story.vocabulary = await self._translate_vocabulary(
+                    llm, package.learning_plan.target_words, system, locale, language
+                )
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Vocabulary translation failed: {e}")
+
         logger.info(f"[LanguageGuardian] {language} translation complete for all scenes")
 
     def _in_native_script(self, text: str, locale: str) -> bool:
@@ -232,6 +242,69 @@ class LanguageGuardianAgent(BaseAgent):
                 system=system,
             )
         return result
+
+    async def _translate_vocabulary(
+        self, llm, words: list[str], system: str, locale: str, language: str
+    ) -> list[VocabWord]:
+        """Translate the target words in one batch call → VocabWord list.
+        Words that come back romanised or empty are dropped — a bad chip
+        teaches the child the wrong thing."""
+        if not words:
+            return []
+        numbered = "\n".join(f"{i + 1}. {w}" for i, w in enumerate(words))
+        result = await llm.generate_json(
+            prompt=(
+                f"Translate each word for a child to learn:\n{numbered}\n\n"
+                'Respond with JSON: {"words": [{"word": "<English>", '
+                '"translated": "<native script>", "romanised": "<pronunciation>"}]} '
+                "in the same order."
+            ),
+            system=system,
+        )
+        vocab: list[VocabWord] = []
+        for i, item in enumerate((result.get("words") or [])[: len(words)]):
+            if not isinstance(item, dict):
+                continue
+            translated = str(item.get("translated", "")).strip()
+            if not translated or not self._in_native_script(translated, locale):
+                continue
+            vocab.append(VocabWord(
+                word=str(item.get("word", "")).strip() or words[i],
+                word_target_lang=translated,
+                romanised=str(item.get("romanised", "")).strip(),
+            ))
+        logger.info(
+            f"[LanguageGuardian] Vocabulary: {len(vocab)}/{len(words)} words in {language}"
+        )
+        return vocab
+
+    async def ensure_vocabulary(self, package: StoryPackage) -> bool:
+        """Backfill Words-to-learn for stories approved before vocabulary
+        existed (session-start self-heal). Returns True when words were added
+        — the caller should then regenerate the media manifest."""
+        if package.story.vocabulary or not package.learning_plan:
+            return False
+        pack = pack_loader.get(package.language.locale)
+        llm, _ = self._llm_for(package)
+        if not pack or not llm:
+            return False
+        system = TRANSLATE_SYSTEM_PROMPT.format(
+            language=pack.guardian.spoken_language,
+            register_notes=pack.guardian.register_notes,
+            cultural_notes=pack.guardian.cultural_notes,
+        )
+        try:
+            package.story.vocabulary = await self._translate_vocabulary(
+                llm,
+                package.learning_plan.target_words,
+                system,
+                package.language.locale,
+                pack.guardian.spoken_language,
+            )
+        except Exception as e:
+            logger.error(f"[LanguageGuardian] Vocabulary backfill failed: {e}")
+            return False
+        return bool(package.story.vocabulary)
 
     def _apply_placeholder_translations(self, package: StoryPackage, pack: LanguagePack) -> None:
         """Fallback placeholder translations sourced from the pack when no LLM is available."""
