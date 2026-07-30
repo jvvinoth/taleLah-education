@@ -580,7 +580,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       return;
     }
     try {
-      await player.setPlaybackRate(0.8);
+      // Base narration is already generated at a storyteller pace (~0.85),
+      // so the retry replay only dips a little further.
+      await player.setPlaybackRate(0.9);
       await player
           .seek(Duration.zero)
           .timeout(const Duration(seconds: 2), onTimeout: () {});
@@ -1725,9 +1727,13 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   /// The hands-free conversation overlay: full-screen Mina reacting to the
   /// child's live voice (listening), a thinking beat (processing), and a
   /// gentle nudge when nothing was heard — never a dead end (AC-04).
+  /// In "I read" turns the story TEXT stays on screen, big and clear —
+  /// the child needs to see the words to read them to Mina.
   Widget _buildListeningOverlay(_DemoScene scene) {
     final listening = _speechPhase == 'listening';
     final processing = _speechPhase == 'processing';
+    final reading = _readingTurn;
+    final minaSize = reading ? 96.0 : 150.0;
     return Positioned.fill(
       child: AnimatedContainer(
         duration: _anim(300),
@@ -1742,21 +1748,73 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: Row(children: [_holdExitButton()]),
               ),
-              const Spacer(),
+              if (reading)
+                // The reading card — large storybook text the child reads
+                // from while Mina listens below.
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.fromLTRB(22, 14, 22, 4),
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(26),
+                      boxShadow: TShadows.card,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${scene.emoji}  ${scene.title}',
+                              style: TextStyle(
+                                color: scene.accent,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              )),
+                          const SizedBox(height: 12),
+                          Text(
+                            scene.narration,
+                            style: const TextStyle(
+                              color: TColors.ink,
+                              fontSize: 25,
+                              fontWeight: FontWeight.w800,
+                              height: 1.6,
+                            ),
+                          ),
+                          if (scene.english.isNotEmpty &&
+                              scene.english != scene.narration) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              scene.english,
+                              style: const TextStyle(
+                                color: TColors.inkSoft,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const Spacer(),
               GestureDetector(
                 onTap: listening || processing ? null : _micRetry,
                 child: VoiceAura(
                   level: _liveMic.level,
                   color: Colors.white,
                   active: listening,
-                  size: 150,
+                  size: minaSize,
                   child: Mina(
                     state: listening
                         ? MinaState.listening
                         : processing
                             ? MinaState.thinking
                             : MinaState.encouraging,
-                    size: 150,
+                    size: minaSize,
                   ),
                 ),
               ),
@@ -1765,15 +1823,15 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 36),
                 child: Text(
                   listening
-                      ? (_readingTurn
+                      ? (reading
                           ? 'Read the story to Mina! 📖'
                           : scene.prompt)
                       : processing
                           ? 'Mina is thinking…'
                           : "Mina couldn't hear you 🤍",
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: reading ? 16 : 20,
                     fontWeight: FontWeight.w800,
                     height: 1.35,
                   ),
@@ -1815,10 +1873,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     ),
                   ],
                 ),
-              const Spacer(),
+              if (!reading) const Spacer(),
               if (listening)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 28),
+                  padding: EdgeInsets.only(bottom: reading ? 14 : 28, top: reading ? 8 : 0),
                   child: Text(
                     "I'll answer when you pause",
                     style: TextStyle(
@@ -1829,7 +1887,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                   ),
                 )
               else
-                const SizedBox(height: 28),
+                SizedBox(height: reading ? 14 : 28),
             ],
           ),
         ),

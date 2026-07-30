@@ -13,12 +13,14 @@
     "tts": {
       "provider": "cosyvoice",
       "language": "zh",
-      "voice_id": "longxiaochun"
+      "voice_id": "longxiaochun",
+      "pace": 0.85
     },
     "tts_fallback": {
       "provider": "google",
       "language": "cmn-CN",
-      "voice_id": "cmn-CN-Wavenet-A"
+      "voice_id": "cmn-CN-Wavenet-A",
+      "pace": 0.85
     },
     "asr_fallback": {
       "provider": "google",

@@ -13,7 +13,8 @@
     "tts": {
       "provider": "google",
       "language": "ms-MY",
-      "voice_id": "ms-MY-Wavenet-A"
+      "voice_id": "ms-MY-Wavenet-A",
+      "pace": 0.85
     }
   },
   "guardian": {

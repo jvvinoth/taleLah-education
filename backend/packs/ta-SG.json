@@ -13,12 +13,14 @@
     "tts": {
       "provider": "sarvam",
       "language": "ta-IN",
-      "voice_id": "anushka"
+      "voice_id": "anushka",
+      "pace": 0.85
     },
     "tts_fallback": {
       "provider": "google",
       "language": "ta-IN",
-      "voice_id": "ta-IN-Wavenet-A"
+      "voice_id": "ta-IN-Wavenet-A",
+      "pace": 0.85
     },
     "asr_fallback": {
       "provider": "google",

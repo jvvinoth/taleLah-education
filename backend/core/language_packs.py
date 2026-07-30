@@ -26,6 +26,10 @@ class SpeechProviderConfig(BaseModel):
     provider: str
     language: str
     voice_id: str = ""
+    # Narration speed — children need a slower, storyteller pace. 1.0 is
+    # the provider default; packs set ~0.85 (Sarvam pace / Google
+    # speaking_rate / CosyVoice speech_rate all accept 0.5–2.0).
+    pace: float = Field(default=1.0, ge=0.5, le=2.0)
 
 
 class PackProviders(BaseModel):

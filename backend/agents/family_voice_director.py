@@ -53,18 +53,20 @@ class FamilyVoiceDirectorAgent(BaseAgent):
         # provider name (from pack) → concrete TTS adapter
         self.tts_registry = tts_registry or {}
 
-    def _resolve_tts(self, locale: str) -> tuple[Optional[TTSProvider], str, str]:
-        """Resolve the primary TTS provider + language + voice (AC-08)."""
+    def _resolve_tts(
+        self, locale: str
+    ) -> tuple[Optional[TTSProvider], str, str, float]:
+        """Resolve the primary TTS provider + language + voice + pace (AC-08)."""
         chain = self._resolve_tts_chain(locale)
-        return chain[0] if chain else (self.tts, "", "")
+        return chain[0] if chain else (self.tts, "", "", 1.0)
 
     def _resolve_tts_chain(
         self, locale: str
-    ) -> list[tuple[TTSProvider, str, str]]:
-        """Ordered (provider, language, voice) candidates from the pack —
-        primary first, then the pack's declared fallback (AC-08). A provider
+    ) -> list[tuple[TTSProvider, str, str, float]]:
+        """Ordered (provider, language, voice, pace) candidates from the pack
+        — primary first, then the pack's declared fallback (AC-08). A provider
         that errors at call time (e.g. quota 402) hands over to the next."""
-        chain: list[tuple[TTSProvider, str, str]] = []
+        chain: list[tuple[TTSProvider, str, str, float]] = []
         pack = pack_loader.get(locale)
         if pack:
             for cfg in (pack.providers.tts, pack.providers.tts_fallback):
@@ -72,30 +74,30 @@ class FamilyVoiceDirectorAgent(BaseAgent):
                     continue
                 provider = self.tts_registry.get(cfg.provider)
                 if provider:
-                    chain.append((provider, cfg.language, cfg.voice_id))
+                    chain.append((provider, cfg.language, cfg.voice_id, cfg.pace))
                 else:
                     logger.warning(
                         f"[FamilyVoiceDirector] Pack {locale} wants TTS "
                         f"'{cfg.provider}' but it is not registered — skipping"
                     )
         if not chain and self.tts:
-            chain.append((self.tts, "", ""))
+            chain.append((self.tts, "", "", 1.0))
         return chain
 
     @staticmethod
     async def _synthesize_with(
-        chain: list[tuple[TTSProvider, str, str]], text: str
+        chain: list[tuple[TTSProvider, str, str, float]], text: str
     ) -> tuple[bytes, TTSProvider]:
         """Try each TTS candidate in order; return (audio, provider used)."""
         last_error: Exception = RuntimeError("no TTS provider available")
-        for provider, language, voice in chain:
+        for provider, language, voice, pace in chain:
             try:
                 if language:
                     audio = await provider.synthesize(
-                        text, language=language, voice_id=voice
+                        text, language=language, voice_id=voice, speed=pace
                     )
                 else:
-                    audio = await provider.synthesize(text)
+                    audio = await provider.synthesize(text, speed=pace)
                 return audio, provider
             except Exception as e:
                 logger.warning(

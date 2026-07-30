@@ -48,6 +48,8 @@ class SarvamTTSProvider(TTSProvider):
                 "inputs": [text],
                 "target_language_code": language,
                 "speaker": speaker,
+                # Storyteller pace for children (Sarvam range 0.5–2.0)
+                "pace": max(0.5, min(2.0, speed)),
             },
         )
         resp.raise_for_status()
