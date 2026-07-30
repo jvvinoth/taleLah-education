@@ -30,7 +30,7 @@ from ...core.config import settings
 from ...core.language_packs import pack_loader
 from ...core.orchestrator import AgentName, TraceEntry, orchestrator
 from ...core.persistence import persistence
-from ...core.speech import match_intent
+from ...core.speech import match_intent, score_reading
 from ...adapters.r2_storage import r2_storage
 from ...adapters.resend_provider import send_reset_email, send_verification_email
 from ...safety.gate import safety_gate
@@ -827,6 +827,7 @@ async def capture_moment_voice(
     asr = _get_asr(pack.providers.asr.provider)
     if asr is None:
         raise HTTPException(503, "Speech recognition unavailable — try typing instead")
+    transcript = None
     try:
         # Parents mix English + mother tongue — let Sarvam auto-detect.
         transcript = await asr.transcribe(audio_bytes, language="unknown")
@@ -837,7 +838,19 @@ async def capture_moment_voice(
             )
         except Exception as e:
             logger.warning(f"[MomentVoice] ASR failed: {e}")
-            raise HTTPException(502, "Could not hear that — try again or type it")
+    if transcript is None and pack.providers.asr_fallback:
+        # Primary provider errored (e.g. quota) — pack-declared fallback.
+        fb = pack.providers.asr_fallback
+        fb_asr = _get_asr(fb.provider)
+        if fb_asr is not None:
+            try:
+                transcript = await fb_asr.transcribe(
+                    audio_bytes, language=fb.language
+                )
+            except Exception as e:
+                logger.warning(f"[MomentVoice] Fallback ASR failed: {e}")
+    if transcript is None:
+        raise HTTPException(502, "Could not hear that — try again or type it")
     del audio_bytes  # hard rule 5 — raw parent audio never retained
 
     transcript = transcript.strip()
@@ -1452,8 +1465,29 @@ async def regenerate_component(
 @router.post("/sessions/start")
 async def start_session(data: SessionStart, adult_id: str = Depends(require_adult)):
     pkg = _require_package(adult_id, data.story_package_id)
-    if pkg.status != StoryStatus.APPROVED:
+    playable = (StoryStatus.APPROVED, StoryStatus.IN_SESSION, StoryStatus.COMPLETED)
+    if pkg.status not in playable:
         raise HTTPException(403, f"Package not approved — status: {pkg.status.value}")
+
+    # Self-heal (F4): if approval-time TTS produced no audio (provider outage/
+    # quota), retry the manifest now so the child still gets narration. Also
+    # heals older manifests generated before spoken feedback existed.
+    has_audio = any(a.url for a in pkg.media.manifest)
+    has_blobs = bool(_media_blobs.get(pkg.id))
+    has_feedback = any(
+        a.kind == "feedback" and a.url for a in pkg.media.manifest
+    )
+    if not has_audio or not has_blobs or not has_feedback:
+        fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
+        if fvd is not None:
+            try:
+                blobs = await fvd.pregenerate_manifest(pkg)
+                if blobs:
+                    _media_blobs[pkg.id] = blobs
+                    persistence.save_blobs(pkg.id, blobs)
+                    persistence.save("story_packages", pkg.id, pkg)
+            except Exception as e:
+                logger.warning(f"[F4] Manifest self-heal failed for {pkg.id}: {e}")
 
     try:
         pkg = await orchestrator.start_session(data.story_package_id)
@@ -1554,15 +1588,18 @@ async def speech_turn(
 
     transcript = ""
     asr_ok = False
-    asr = _get_asr(pack.providers.asr.provider)
-    if asr and audio_bytes:
+    # Pack-declared ASR chain — primary first, fallback if it errors (quota etc.)
+    for cfg in (pack.providers.asr, pack.providers.asr_fallback):
+        if cfg is None or asr_ok or not audio_bytes:
+            continue
+        asr = _get_asr(cfg.provider)
+        if asr is None:
+            continue
         try:
-            transcript = await asr.transcribe(
-                audio_bytes, language=pack.providers.asr.language
-            )
+            transcript = await asr.transcribe(audio_bytes, language=cfg.language)
             asr_ok = True
         except Exception as e:
-            logger.warning(f"[SpeechTurn] ASR failed: {e}")
+            logger.warning(f"[SpeechTurn] ASR {cfg.provider} failed: {e}")
     # AC-07 — raw child audio discarded after intent extraction; never stored
     del audio_bytes
 
@@ -1597,6 +1634,18 @@ async def speech_turn(
                 "english": entry.english,
             })
 
+    # Constructive feedback on a miss — teach the expected word politely
+    # (AC-04: appreciation first, never "wrong").
+    correction_word = ""
+    correction_copy = ""
+    if next_action != "celebrate":
+        words = pack.expected_intents.get(expected_intent) or []
+        if words and pack.child_copy.gentle_correction:
+            correction_word = words[0]
+            correction_copy = pack.child_copy.gentle_correction.format(
+                word=correction_word
+            )
+
     _trace_edit(
         session.story_package_id,
         "speech_turn",
@@ -1617,6 +1666,8 @@ async def speech_turn(
         "encourage_copy": _pick(
             pack.child_copy.encourage_retry, "Let's listen once more!"
         ),
+        "correction_word": correction_word,
+        "correction_copy": correction_copy,
         "listen_prompt": pack.child_copy.listen_prompt,
         "fallback_options": fallback_options,
         "audio_retained": False,
@@ -1650,6 +1701,93 @@ async def speech_fallback(
         "session_id": session_id,
         "celebration_copy": celebration,
         "speech_turn_completed": True,
+    }
+
+
+@router.post("/sessions/{session_id}/read-aloud")
+async def read_aloud_turn(
+    session_id: str,
+    audio: UploadFile = File(...),
+    scene_index: int = Form(0),
+    adult_id: str = Depends(require_adult),
+):
+    """
+    "I read" mode — the child reads the scene aloud and Mina listens.
+    Coverage is scored fuzzily against the scene narration; the response is
+    ALWAYS appreciation, plus at most one word to practise together when
+    coverage is partial (AC-04 — constructive, never demotivating).
+    Raw transcript is never returned; raw audio discarded (AC-07).
+    """
+    session = _require_session(adult_id, session_id)
+    pkg = orchestrator.get_package(session.story_package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    pack = pack_loader.get(pkg.language.locale)
+    if not pack:
+        raise HTTPException(422, f"No language pack for {pkg.language.locale}")
+    scene = next(
+        (s for s in pkg.story.scenes if s.index == scene_index), None
+    )
+    if scene is None:
+        raise HTTPException(404, f"No scene {scene_index} in this story")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Audio clip too large (max 5 MB)")
+
+    transcript = ""
+    asr_ok = False
+    for cfg in (pack.providers.asr, pack.providers.asr_fallback):
+        if cfg is None or asr_ok or not audio_bytes:
+            continue
+        asr = _get_asr(cfg.provider)
+        if asr is None:
+            continue
+        try:
+            transcript = await asr.transcribe(audio_bytes, language=cfg.language)
+            asr_ok = True
+        except Exception as e:
+            logger.warning(f"[ReadAloud] ASR {cfg.provider} failed: {e}")
+    del audio_bytes  # AC-07 — never stored
+
+    narration = scene.narration_target_lang or scene.narration
+    reading = score_reading(
+        transcript, narration, normalization=pack.speech.normalization
+    )
+
+    # One practice word max — a parent corrects gently, not with a list.
+    # Pick the longest missed word: the meatiest thing to practise together.
+    practice_word = ""
+    practice_copy = ""
+    if reading.heard and reading.missed_words and reading.score < 0.9:
+        practice_word = max(reading.missed_words, key=len)
+        if pack.child_copy.reading_practice:
+            practice_copy = pack.child_copy.reading_practice.format(
+                word=practice_word
+            )
+
+    if reading.heard:
+        session.speech_turn_completed = True
+        persistence.save("story_sessions", session_id, session)
+
+    _trace_edit(
+        session.story_package_id,
+        "read_aloud",
+        f"scene={scene_index} heard={reading.heard} score={reading.score} "
+        f"asr_ok={asr_ok} (raw audio discarded)",
+    )
+
+    return {
+        "session_id": session_id,
+        "heard": reading.heard,
+        "score": reading.score,
+        "praise_copy": _pick(pack.child_copy.praise_reading, "🌟"),
+        "practice_word": practice_word,
+        "practice_copy": practice_copy,
+        "encourage_copy": _pick(
+            pack.child_copy.encourage_retry, "Let's try once more!"
+        ),
+        "audio_retained": False,
     }
 
 

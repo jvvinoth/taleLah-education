@@ -10,6 +10,7 @@ from backend.core.speech import (  # noqa: E402
     levenshtein_ratio,
     match_intent,
     normalize,
+    score_reading,
 )
 
 EXPECTED = {
@@ -80,3 +81,31 @@ def test_dice_and_levenshtein_bounds():
     assert dice_coefficient("abc", "xyz") == 0.0
     assert levenshtein_ratio("abc", "abc") == 1.0
     assert 0.0 <= levenshtein_ratio("abc", "abd") < 1.0
+
+
+# ── "I read" mode — read-aloud coverage scorer ─────────────────────
+
+NARRATION = "ஒரு நாள், அருண் சிவப்பு ரயிலை பார்த்தான்!"
+
+
+def test_full_reading_scores_high_with_no_practice_words():
+    r = score_reading(NARRATION, NARRATION)
+    assert r.heard and r.score == 1.0 and r.missed_words == []
+
+
+def test_partial_reading_scores_between_and_reports_missed():
+    r = score_reading("ஒரு நாள் அருண்", NARRATION)
+    assert r.heard and 0.0 < r.score < 1.0
+    assert "சிவப்பு" in r.missed_words
+
+
+def test_silence_is_not_heard_and_never_penalised():
+    r = score_reading("", NARRATION)
+    assert not r.heard and r.score == 0.0 and r.missed_words == []
+
+
+def test_reading_is_fuzzy_against_asr_noise():
+    # ASR drops a punctuation mark and slightly mangles one token — the
+    # child must still get full credit for what they read.
+    r = score_reading("ஒரு நாள அருண சிவப்பு ரயிலை பார்த்தான்", NARRATION)
+    assert r.heard and r.score >= 0.8

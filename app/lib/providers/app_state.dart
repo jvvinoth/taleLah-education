@@ -504,14 +504,23 @@ class AppState extends ChangeNotifier {
 
   /// Start a backend session for the approved story so the bounded speech
   /// turn can transcribe + match. Failure is non-fatal — the story plays
-  /// without a live speech turn (degradation ladder).
+  /// without a live speech turn (degradation ladder). The response carries
+  /// the (possibly self-healed) package — refresh [approvedStory] with it
+  /// so the child screen preloads regenerated audio instead of a stale
+  /// silent manifest.
   Future<void> startChildSession() async {
     _sessionId = null;
     _sessionSummary = null;
     final story = _approvedStory;
     if (story == null) return;
     try {
-      _sessionId = await api.startSession(story.packageId);
+      final res = await api.startSession(story.packageId);
+      _sessionId = res?['session_id'] as String?;
+      final pkg = res?['package'] as Map<String, dynamic>?;
+      if (pkg != null) {
+        _approvedStory = ApprovedStory.fromPackageJson(pkg);
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('Session start failed: $e');
     }

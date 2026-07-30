@@ -6,8 +6,15 @@
   "providers": {
     "llm": "qwen",
     "vision": "qwen",
-    "asr": { "provider": "google", "language": "ms-MY" },
-    "tts": { "provider": "google", "language": "ms-MY", "voice_id": "ms-MY-Wavenet-A" }
+    "asr": {
+      "provider": "google",
+      "language": "ms-MY"
+    },
+    "tts": {
+      "provider": "google",
+      "language": "ms-MY",
+      "voice_id": "ms-MY-Wavenet-A"
+    }
   },
   "guardian": {
     "spoken_language": "Malay",
@@ -15,19 +22,73 @@
     "cultural_notes": "Keep Singapore context: HDB, MRT, pasar malam, kampung spirit. Avoid overly formal bahasa baku for child lines."
   },
   "word_bank": [
-    { "word": "merah", "romanised": "merah", "english": "red" },
-    { "word": "biru", "romanised": "biru", "english": "blue" },
-    { "word": "hijau", "romanised": "hijau", "english": "green" },
-    { "word": "kuning", "romanised": "kuning", "english": "yellow" },
-    { "word": "kereta api", "romanised": "kereta api", "english": "train" },
-    { "word": "seterusnya", "romanised": "seterusnya", "english": "next" },
-    { "word": "stesen", "romanised": "stesen", "english": "station" }
+    {
+      "word": "merah",
+      "romanised": "merah",
+      "english": "red"
+    },
+    {
+      "word": "biru",
+      "romanised": "biru",
+      "english": "blue"
+    },
+    {
+      "word": "hijau",
+      "romanised": "hijau",
+      "english": "green"
+    },
+    {
+      "word": "kuning",
+      "romanised": "kuning",
+      "english": "yellow"
+    },
+    {
+      "word": "kereta api",
+      "romanised": "kereta api",
+      "english": "train"
+    },
+    {
+      "word": "seterusnya",
+      "romanised": "seterusnya",
+      "english": "next"
+    },
+    {
+      "word": "stesen",
+      "romanised": "stesen",
+      "english": "station"
+    }
   ],
   "expected_intents": {
-    "names_a_color": ["merah", "biru", "hijau", "kuning", "red", "blue", "green", "yellow"],
-    "counts": ["satu", "dua", "tiga", "one", "two", "three"],
-    "predicts_next": ["seterusnya", "lepas itu", "next", "after"],
-    "polite_request": ["tolong", "bagi saya", "please", "give"]
+    "names_a_color": [
+      "merah",
+      "biru",
+      "hijau",
+      "kuning",
+      "red",
+      "blue",
+      "green",
+      "yellow"
+    ],
+    "counts": [
+      "satu",
+      "dua",
+      "tiga",
+      "one",
+      "two",
+      "three"
+    ],
+    "predicts_next": [
+      "seterusnya",
+      "lepas itu",
+      "next",
+      "after"
+    ],
+    "polite_request": [
+      "tolong",
+      "bagi saya",
+      "please",
+      "give"
+    ]
   },
   "speech": {
     "keyword_floor": 0.7,
@@ -35,9 +96,23 @@
     "normalization": "NFC"
   },
   "child_copy": {
-    "celebration": ["Bagusnya! 🎉", "Hebat!", "Pandai!"],
-    "encourage_retry": ["Nak dengar sekali lagi?", "Jom cakap perlahan-lahan!"],
-    "listen_prompt": "Beritahu Mina!"
+    "celebration": [
+      "Bagusnya! 🎉",
+      "Hebat!",
+      "Pandai!"
+    ],
+    "encourage_retry": [
+      "Nak dengar sekali lagi?",
+      "Jom cakap perlahan-lahan!"
+    ],
+    "listen_prompt": "Beritahu Mina!",
+    "gentle_correction": "Cubaan yang bagus! 💪 Jom sebut: '{word}' — sekali lagi!",
+    "praise_reading": [
+      "Wah! Kamu baca sendiri! 🌟",
+      "Bagus bacaannya! 👏",
+      "Makin pandai membaca! 🎉"
+    ],
+    "reading_practice": "Jom sebut sama-sama: '{word}'"
   },
   "family_copy": {
     "say_together": "Jom sebut sama-sama! — Say it together!",

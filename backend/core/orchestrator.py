@@ -60,8 +60,9 @@ STATUS_TRANSITIONS: dict[StoryStatus, list[StoryStatus]] = {
     StoryStatus.VALIDATING: [StoryStatus.AWAITING_PARENT, StoryStatus.WRITING],  # revise loop
     StoryStatus.AWAITING_PARENT: [StoryStatus.APPROVED, StoryStatus.CAPTURED],  # reject = restart
     StoryStatus.APPROVED: [StoryStatus.IN_SESSION],
-    StoryStatus.IN_SESSION: [StoryStatus.COMPLETED],
-    StoryStatus.COMPLETED: [],
+    # Kids replay favourite stories — sessions can reopen after (or during) a run.
+    StoryStatus.IN_SESSION: [StoryStatus.COMPLETED, StoryStatus.IN_SESSION],
+    StoryStatus.COMPLETED: [StoryStatus.IN_SESSION],
 }
 
 
@@ -382,12 +383,17 @@ class WorkflowOrchestrator:
         return pkg
 
     async def start_session(self, package_id: str) -> StoryPackage:
-        """Begin a child session with an approved package."""
+        """Begin (or replay) a child session with an approved package."""
         pkg = self._packages.get(package_id)
         if not pkg:
             raise ValueError(f"Package {package_id} not found")
 
-        if pkg.status != StoryStatus.APPROVED:
+        replayable = (
+            StoryStatus.APPROVED,
+            StoryStatus.IN_SESSION,
+            StoryStatus.COMPLETED,
+        )
+        if pkg.status not in replayable:
             raise ValueError(f"Package not approved: {pkg.status.value}")
 
         # Defense in depth — never open a child session on unsafe content even

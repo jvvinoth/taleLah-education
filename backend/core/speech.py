@@ -114,3 +114,47 @@ def match_intent(
                 best = IntentMatch(intent=intent, keyword=keyword, score=round(score, 3))
     best.matched = best.score >= floor
     return best
+
+
+@dataclass
+class ReadingScore:
+    """Read-aloud coverage — how much of the narration the child read."""
+    score: float = 0.0
+    heard: bool = False
+    missed_words: list[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.missed_words is None:
+            self.missed_words = []
+
+
+def score_reading(
+    transcript: str,
+    narration: str,
+    normalization: str = "NFC",
+    token_floor: float = 0.7,
+) -> ReadingScore:
+    """
+    Score a child reading a scene aloud: fraction of narration tokens found
+    (fuzzily) in the transcript. Same privacy contract as match_intent —
+    callers never expose the raw transcript, only the coverage and up to a
+    couple of narration words to practise together.
+    """
+    tnorm = normalize(transcript, normalization)
+    nnorm = normalize(narration, normalization)
+    ntokens = [t for t in nnorm.split() if len(t) >= 2]
+    if not tnorm or not ntokens:
+        return ReadingScore(heard=bool(tnorm))
+
+    hit = 0
+    missed: list[str] = []
+    for tok in ntokens:
+        if keyword_score(tnorm, tok) >= token_floor:
+            hit += 1
+        else:
+            missed.append(tok)
+    return ReadingScore(
+        score=round(hit / len(ntokens), 3),
+        heard=True,
+        missed_words=missed,
+    )

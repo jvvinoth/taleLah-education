@@ -427,16 +427,17 @@ class ApiClient {
 
   // ── F6 · Child session + bounded speech turn ──────────────────────
 
-  /// Start a child session for an approved package → session_id.
-  Future<String?> startSession(String packageId) async {
+  /// Start a child session for an approved package. Returns the full
+  /// response — `session_id` plus the (possibly self-healed) `package`,
+  /// whose manifest may carry freshly regenerated audio URLs.
+  Future<Map<String, dynamic>?> startSession(String packageId) async {
     final res = await _client.post(
       Uri.parse('$baseUrl/sessions/start'),
       headers: _headers,
       body: jsonEncode({'story_package_id': packageId}),
     );
     if (res.statusCode >= 400) return null;
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return data['session_id'] as String?;
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   /// Upload a child speech clip — backend transcribes + fuzzy-matches
@@ -478,6 +479,33 @@ class ApiClient {
     );
     if (res.statusCode >= 400) {
       throw ApiException(res.statusCode, 'Fallback failed');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// "I read" mode — the child reads the scene aloud; Mina scores the
+  /// reading fuzzily and always answers with appreciation (plus at most
+  /// one word to practise together). Transcript never comes back.
+  Future<Map<String, dynamic>> readAloudTurn({
+    required String sessionId,
+    required List<int> audioBytes,
+    required int sceneIndex,
+  }) async {
+    final req = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/sessions/$sessionId/read-aloud'),
+    );
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.fields['scene_index'] = '$sceneIndex';
+    req.files.add(http.MultipartFile.fromBytes(
+      'audio',
+      audioBytes,
+      filename: 'reading.wav',
+    ));
+    final streamed = await req.send().timeout(const Duration(seconds: 30));
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'Read-aloud turn failed');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }

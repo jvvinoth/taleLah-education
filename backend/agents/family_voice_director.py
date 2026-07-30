@@ -10,6 +10,7 @@ Writes: familyHandoff, media.narrationSegments.
 """
 from __future__ import annotations
 
+import base64
 import logging
 from typing import Optional
 
@@ -53,23 +54,62 @@ class FamilyVoiceDirectorAgent(BaseAgent):
         self.tts_registry = tts_registry or {}
 
     def _resolve_tts(self, locale: str) -> tuple[Optional[TTSProvider], str, str]:
-        """Resolve the TTS provider + language + voice from the active pack (AC-08)."""
+        """Resolve the primary TTS provider + language + voice (AC-08)."""
+        chain = self._resolve_tts_chain(locale)
+        return chain[0] if chain else (self.tts, "", "")
+
+    def _resolve_tts_chain(
+        self, locale: str
+    ) -> list[tuple[TTSProvider, str, str]]:
+        """Ordered (provider, language, voice) candidates from the pack —
+        primary first, then the pack's declared fallback (AC-08). A provider
+        that errors at call time (e.g. quota 402) hands over to the next."""
+        chain: list[tuple[TTSProvider, str, str]] = []
         pack = pack_loader.get(locale)
         if pack:
-            cfg = pack.providers.tts
-            provider = self.tts_registry.get(cfg.provider)
-            if provider:
-                return provider, cfg.language, cfg.voice_id
-            logger.warning(
-                f"[FamilyVoiceDirector] Pack {locale} wants TTS '{cfg.provider}' "
-                f"but it is not registered — falling back"
-            )
-        return self.tts, "", ""
+            for cfg in (pack.providers.tts, pack.providers.tts_fallback):
+                if cfg is None:
+                    continue
+                provider = self.tts_registry.get(cfg.provider)
+                if provider:
+                    chain.append((provider, cfg.language, cfg.voice_id))
+                else:
+                    logger.warning(
+                        f"[FamilyVoiceDirector] Pack {locale} wants TTS "
+                        f"'{cfg.provider}' but it is not registered — skipping"
+                    )
+        if not chain and self.tts:
+            chain.append((self.tts, "", ""))
+        return chain
+
+    @staticmethod
+    async def _synthesize_with(
+        chain: list[tuple[TTSProvider, str, str]], text: str
+    ) -> tuple[bytes, TTSProvider]:
+        """Try each TTS candidate in order; return (audio, provider used)."""
+        last_error: Exception = RuntimeError("no TTS provider available")
+        for provider, language, voice in chain:
+            try:
+                if language:
+                    audio = await provider.synthesize(
+                        text, language=language, voice_id=voice
+                    )
+                else:
+                    audio = await provider.synthesize(text)
+                return audio, provider
+            except Exception as e:
+                logger.warning(
+                    f"[FamilyVoiceDirector] TTS "
+                    f"{provider.__class__.__name__} failed ({e}) — "
+                    f"trying next provider"
+                )
+                last_error = e
+        raise last_error
 
     async def execute(self, package: StoryPackage) -> StoryPackage:
         logger.info(f"[FamilyVoiceDirector] Preparing audio for package {package.id}")
 
-        tts, tts_language, tts_voice = self._resolve_tts(package.language.locale)
+        chain = self._resolve_tts_chain(package.language.locale)
 
         segments = []
         tts_provider_name = "none"
@@ -85,17 +125,15 @@ class FamilyVoiceDirectorAgent(BaseAgent):
                 text_target_lang=scene.narration_target_lang,
             )
 
-            # Generate TTS audio if provider is available
-            if tts and text_to_speak:
+            # Generate TTS audio if a provider is available
+            if chain and text_to_speak:
                 try:
-                    if tts_language:
-                        audio_url = await tts.get_audio_url(
-                            text_to_speak, language=tts_language, voice_id=tts_voice
-                        )
-                    else:
-                        audio_url = await tts.get_audio_url(text_to_speak)
-                    segment.audio_url = audio_url
-                    segment.tts_provider = tts.__class__.__name__.replace("Provider", "").lower()
+                    audio, used = await self._synthesize_with(chain, text_to_speak)
+                    mime = "audio/wav" if audio[:4] == b"RIFF" else "audio/mp3"
+                    segment.audio_url = (
+                        f"data:{mime};base64,{base64.b64encode(audio).decode()}"
+                    )
+                    segment.tts_provider = used.__class__.__name__.replace("Provider", "").lower()
                     tts_provider_name = segment.tts_provider
                     logger.debug(f"[FamilyVoiceDirector] Generated audio for scene {scene.index}")
                 except Exception as e:
@@ -121,10 +159,8 @@ class FamilyVoiceDirectorAgent(BaseAgent):
         Returns {filename: audio bytes} for the caller to store/serve.
         Assets that fail TTS keep url="" — the parent-read fallback.
         """
-        tts, tts_language, tts_voice = self._resolve_tts(package.language.locale)
-        provider_name = (
-            tts.__class__.__name__.replace("Provider", "").lower() if tts else "text_only"
-        )
+        chain = self._resolve_tts_chain(package.language.locale)
+        provider_name = "text_only"
 
         items: list[tuple[str, str, int, str, str]] = []
         for scene in package.story.scenes:
@@ -141,6 +177,30 @@ class FamilyVoiceDirectorAgent(BaseAgent):
             items.append(("handoff", "handoff", -1,
                           handoff.prompt, handoff.prompt_target_lang))
 
+        # Spoken feedback — Mina praises and gently corrects OUT LOUD, like a
+        # parent would. Copy comes from the pack (AC-08); corrections teach
+        # the scene's expected word without ever saying "wrong" (AC-04).
+        pack = pack_loader.get(package.language.locale)
+        if pack:
+            copy = pack.child_copy
+            if copy.celebration:
+                items.append(("celebrate", "feedback", -1, "", copy.celebration[0]))
+            if copy.encourage_retry:
+                items.append(("encourage", "feedback", -1, "", copy.encourage_retry[0]))
+            if copy.praise_reading:
+                items.append(
+                    ("praise_reading", "feedback", -1, "", copy.praise_reading[0])
+                )
+            if copy.gentle_correction:
+                for scene in package.story.scenes:
+                    intent = scene.interaction.expected_intent
+                    words = pack.expected_intents.get(intent) or []
+                    if scene.interaction.type == "speak" and words:
+                        items.append((
+                            f"correction_{scene.index}", "feedback", scene.index,
+                            "", copy.gentle_correction.format(word=words[0]),
+                        ))
+
         blobs: dict[str, bytes] = {}
         manifest: list[MediaAsset] = []
         for asset_id, kind, idx, text, text_tl in items:
@@ -149,14 +209,10 @@ class FamilyVoiceDirectorAgent(BaseAgent):
                 text=text, text_target_lang=text_tl,
             )
             speak = text_tl or text
-            if tts and speak:
+            if chain and speak:
                 try:
-                    if tts_language:
-                        audio = await tts.synthesize(
-                            speak, language=tts_language, voice_id=tts_voice
-                        )
-                    else:
-                        audio = await tts.synthesize(speak)
+                    audio, used = await self._synthesize_with(chain, speak)
+                    provider_name = used.__class__.__name__.replace("Provider", "").lower()
                     ext = "wav" if audio[:4] == b"RIFF" else "mp3"
                     filename = f"{asset_id}.{ext}"
                     blobs[filename] = audio

@@ -42,6 +42,13 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   String _feedbackCopy = '';
   List<Map<String, dynamic>> _fallbackOptions = [];
 
+  // Story control — Mina reads (default) or the child reads by themself
+  // ("I read": Mina listens to the reading and appreciates it); narration
+  // can be paused mid-scene like a parent pausing the book.
+  bool _iRead = false;
+  bool _readingTurn = false;
+  bool _narrationPaused = false;
+
   // F7 — hold-to-exit gate (AC-03): 3 s continuous press opens the parent gate
   Timer? _holdTimer;
   double _holdProgress = 0;
@@ -69,7 +76,22 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     final app = context.read<AppState>();
     _story = app.approvedStory;
     _scenes = _buildScenes();
-    app.startChildSession(); // F6 — non-fatal if it fails
+    _startAndPreload(app);
+  }
+
+  /// F6 + F4 — start the backend session first: its response carries the
+  /// self-healed manifest (audio regenerated if approval-time TTS failed),
+  /// so preloading must run on the refreshed story, not the stale snapshot.
+  Future<void> _startAndPreload(AppState app) async {
+    await app.startChildSession(); // non-fatal if it fails
+    if (!mounted) return;
+    final refreshed = app.approvedStory;
+    if (refreshed != null && !identical(refreshed, _story)) {
+      setState(() {
+        _story = refreshed;
+        _scenes = _buildScenes();
+      });
+    }
     _preloadAudio(app);
   }
 
@@ -163,12 +185,17 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     for (final asset in audioAssets) {
       final player = AudioPlayer();
       try {
+        // Keep the source loaded across stop() calls — the default
+        // ReleaseMode.release drops it, and a later seek()/resume() on a
+        // source-less player hangs forever (web).
+        await player.setReleaseMode(ReleaseMode.stop);
         await player
             .setSourceUrl(app.mediaUrl(asset.url))
             .timeout(const Duration(seconds: 12));
         _players[asset.id] = player;
-      } catch (_) {
+      } catch (e) {
         // This asset falls back to parent-read (text + English).
+        debugPrint('Preload failed for ${asset.id}: $e');
         player.dispose();
       }
       done++;
@@ -184,7 +211,31 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   bool _hasAudio(_DemoScene scene) =>
       scene.assetId != null && _players.containsKey(scene.assetId);
 
+  bool _isStoryScene(int index) =>
+      _scenes[index].assetId?.startsWith('scene_') ?? false;
+
+  /// Backend scene index behind this card ('scene_N' → N); null for
+  /// mission/handoff/demo cards.
+  int? _storySceneIndex(int index) {
+    final assetId = _scenes[index].assetId;
+    if (assetId == null || !assetId.startsWith('scene_')) return null;
+    return int.tryParse(assetId.substring('scene_'.length));
+  }
+
   Future<void> _playScene(int index) async {
+    if (_narrationPaused) setState(() => _narrationPaused = false);
+    if (_iRead && _isStoryScene(index)) {
+      // "I read" — the child reads this scene aloud; Mina just listens.
+      for (final p in _players.values) {
+        p.stop();
+      }
+      _scheduleReading(index);
+      return;
+    }
+    await _playNarration(index);
+  }
+
+  Future<void> _playNarration(int index) async {
     for (final p in _players.values) {
       p.stop();
     }
@@ -198,13 +249,76 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     }
     try {
       await player.setPlaybackRate(1.0);
-      await player.seek(Duration.zero);
+      // Web: the seek-complete event may never fire (e.g. already at 0) —
+      // never let it stall the narration.
+      await player
+          .seek(Duration.zero)
+          .timeout(const Duration(seconds: 2), onTimeout: () {});
       await player.resume();
-      // Half-duplex conversation: the mic opens when Mina stops talking.
-      player.onPlayerComplete.first.then((_) => _autoListen(index));
-    } catch (_) {
+      // Half-duplex conversation: the mic opens when Mina stops talking —
+      // in "I read" mode she hands the book over instead.
+      player.onPlayerComplete.first.then((_) {
+        if (_iRead && _isStoryScene(index)) {
+          _scheduleReading(index);
+        } else {
+          _autoListen(index);
+        }
+      });
+    } catch (e) {
       // Autoplay may be blocked until first tap — the LISTEN chip covers it.
+      debugPrint('Play failed for scene $index: $e');
     }
+  }
+
+  /// Pause / resume the current narration — the "parent pausing the book"
+  /// control (≥56 dp chip next to LISTEN).
+  Future<void> _togglePause() async {
+    final assetId = _scenes[_currentScene].assetId;
+    final player = assetId == null ? null : _players[assetId];
+    if (player == null) return;
+    try {
+      if (_narrationPaused) {
+        await player.resume();
+      } else {
+        await player.pause();
+      }
+      setState(() => _narrationPaused = !_narrationPaused);
+    } catch (e) {
+      debugPrint('Pause toggle failed: $e');
+    }
+  }
+
+  /// Mina speaks her feedback out loud (celebrate / encourage /
+  /// praise_reading / correction_N — pre-generated pack copy).
+  Future<void> _playFeedback(String assetId) async {
+    final player = _players[assetId];
+    if (player == null) return;
+    try {
+      for (final p in _players.values) {
+        p.stop();
+      }
+      await player.setPlaybackRate(1.0);
+      await player
+          .seek(Duration.zero)
+          .timeout(const Duration(seconds: 2), onTimeout: () {});
+      await player.resume();
+    } catch (e) {
+      debugPrint('Feedback play failed for $assetId: $e');
+    }
+  }
+
+  /// Switch who reads the story — Mina (narration + answer turns) or the
+  /// child ("I read": Mina listens to the reading and appreciates it).
+  void _setIRead(bool value) {
+    if (_iRead == value) return;
+    for (final p in _players.values) {
+      p.stop();
+    }
+    setState(() {
+      _iRead = value;
+      _resetSpeechState();
+    });
+    _playScene(_currentScene);
   }
 
   // ── F6 — bounded speech turn ─────────────────────────────────────────
@@ -226,6 +340,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
 
   Future<void> _startListening() async {
     if (_speechPhase == 'listening' || _speechPhase == 'processing') return;
+    _readingTurn = false;
     if (!await _liveMic.hasPermission()) {
       _celebrateLocally(); // no mic → story never blocks
       return;
@@ -248,9 +363,91 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     if (!result.heardSpeech) {
       // Silence — a gentle nudge, never a fail (AC-04).
       setState(() => _speechPhase = 'nudge');
+      _playFeedback('encourage');
       return;
     }
     await _submitClip(result.wavBytes);
+  }
+
+  // ── "I read" mode — the child reads the scene, Mina listens ────────
+
+  void _scheduleReading(int index) {
+    _autoListenTimer?.cancel();
+    _autoListenTimer = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted || _sessionComplete) return;
+      if (_currentScene != index || !_iRead) return;
+      if (_speechPhase != 'idle' && _speechPhase != 'retry') return;
+      _startReading();
+    });
+  }
+
+  /// Open the mic for a whole-scene reading — longer window than the
+  /// one-word answer turn, closed by a longer silence.
+  Future<void> _startReading() async {
+    if (_speechPhase == 'listening' || _speechPhase == 'processing') return;
+    if (!await _liveMic.hasPermission()) return; // reading still works aloud
+    if (!mounted) return;
+    for (final p in _players.values) {
+      p.stop();
+    }
+    _readingTurn = true;
+    setState(() => _speechPhase = 'listening');
+    final result = await _liveMic.listen(
+      maxDuration: const Duration(seconds: 20),
+      silenceAfter: const Duration(milliseconds: 1600),
+      noSpeechTimeout: const Duration(seconds: 10),
+    );
+    if (!mounted || _speechPhase != 'listening') return;
+    if (result == null) {
+      setState(() => _speechPhase = 'idle');
+      return;
+    }
+    if (!result.heardSpeech) {
+      setState(() => _speechPhase = 'nudge');
+      _playFeedback('encourage');
+      return;
+    }
+    await _submitReading(result.wavBytes);
+  }
+
+  Future<void> _submitReading(List<int> bytes) async {
+    final app = context.read<AppState>();
+    setState(() => _speechPhase = 'processing');
+    try {
+      final sessionId = app.sessionId;
+      final sceneIndex = _storySceneIndex(_currentScene);
+      if (sessionId == null || sceneIndex == null) {
+        _celebrateLocally();
+        return;
+      }
+      final r = await app.api.readAloudTurn(
+        sessionId: sessionId,
+        audioBytes: bytes,
+        sceneIndex: sceneIndex,
+      );
+      if (!mounted) return;
+      // ALWAYS appreciation first; at most one word to practise together —
+      // constructive, never demotivating (AC-04).
+      final praise = r['praise_copy'] as String? ?? '🌟';
+      final practice = r['practice_copy'] as String? ?? '';
+      setState(() {
+        _speechPhase = 'celebrate';
+        _feedbackCopy =
+            practice.isNotEmpty ? '$praise\n$practice' : praise;
+      });
+      _playFeedback('praise_reading');
+    } catch (_) {
+      _celebrateLocally();
+    }
+  }
+
+  /// The overlay's "Try again" — reopen whichever turn was underway.
+  void _micRetry() {
+    if (_readingTurn) {
+      _startReading();
+    } else {
+      _startListening();
+    }
   }
 
   Future<void> _submitClip(List<int> bytes) async {
@@ -278,13 +475,17 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   void _handleSpeechResult(Map<String, dynamic> r) {
     final action = r['next_action'] as String? ?? 'celebrate';
     if (action == 'retry_slower') {
+      // Constructive feedback — teach the expected word politely, then
+      // replay the narration a little slower (AC-04 ladder).
+      final correction = r['correction_copy'] as String? ?? '';
       setState(() {
         _speechPhase = 'retry';
         _attempt = (r['attempt'] as int? ?? _attempt) + 1;
-        _feedbackCopy =
-            r['encourage_copy'] as String? ?? 'மீண்டும் சொல்லலாம்! 💪';
+        _feedbackCopy = correction.isNotEmpty
+            ? correction
+            : r['encourage_copy'] as String? ?? 'மீண்டும் சொல்லலாம்! 💪';
       });
-      _playSceneSlow();
+      _playCorrectionThenReplay();
     } else if (action == 'picture_choice') {
       final options = (r['fallback_options'] as List? ?? [])
           .whereType<Map>()
@@ -303,6 +504,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         _speechPhase = 'celebrate';
         _feedbackCopy = r['celebration_copy'] as String? ?? 'அருமை! 🎉';
       });
+      _playFeedback('celebrate'); // Mina says it out loud, like a parent
     }
   }
 
@@ -325,6 +527,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       _speechPhase = 'celebrate';
       _feedbackCopy = copy;
     });
+    _playFeedback('celebrate');
   }
 
   void _celebrateLocally() {
@@ -333,6 +536,37 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       _speechPhase = 'celebrate';
       _feedbackCopy = 'அருமை! (Super!) 🎉';
     });
+    _playFeedback('celebrate');
+  }
+
+  /// Miss 1 — Mina first SAYS the gentle correction ("good try — the word
+  /// is …, once more!"), then replays the narration slower and listens
+  /// again. Falls through to the slow replay if the audio isn't loaded.
+  Future<void> _playCorrectionThenReplay() async {
+    final index = _currentScene;
+    final sceneIndex = _storySceneIndex(index);
+    final player = (sceneIndex == null
+            ? null
+            : _players['correction_$sceneIndex']) ??
+        _players['encourage'];
+    if (player != null) {
+      try {
+        for (final p in _players.values) {
+          p.stop();
+        }
+        await player.setPlaybackRate(1.0);
+        await player
+            .seek(Duration.zero)
+            .timeout(const Duration(seconds: 2), onTimeout: () {});
+        await player.resume();
+        await player.onPlayerComplete.first
+            .timeout(const Duration(seconds: 15));
+      } catch (e) {
+        debugPrint('Correction play failed: $e');
+      }
+    }
+    if (!mounted || _currentScene != index) return;
+    _playSceneSlow();
   }
 
   /// Miss 1 → replay the scene narration a little slower (AC-04 ladder),
@@ -347,7 +581,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     }
     try {
       await player.setPlaybackRate(0.8);
-      await player.seek(Duration.zero);
+      await player
+          .seek(Duration.zero)
+          .timeout(const Duration(seconds: 2), onTimeout: () {});
       await player.resume();
       player.onPlayerComplete.first.then((_) => _autoListen(index));
     } catch (_) {}
@@ -360,6 +596,8 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     _attempt = 1;
     _feedbackCopy = '';
     _fallbackOptions = [];
+    _readingTurn = false;
+    _narrationPaused = false;
   }
 
   // ── F7 · child-mode lockdown (AC-03) ──────────────────────
@@ -746,7 +984,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                               GestureDetector(
                                 behavior: HitTestBehavior.opaque,
                                 onTap: _hasAudio(scene)
-                                    ? () => _playScene(_currentScene)
+                                    ? () => _playNarration(_currentScene)
                                     : null,
                                 // Padding grows the hit area to ≥56 dp
                                 child: Container(
@@ -773,6 +1011,34 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                                   ),
                                 ),
                               ),
+                              if (_hasAudio(scene) && !_iRead) ...[
+                                const SizedBox(width: 8),
+                                // Pause/resume — like a parent pausing the book
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: _togglePause,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 22, vertical: 17),
+                                    decoration: BoxDecoration(
+                                      color: TColors.lemon,
+                                      borderRadius:
+                                          BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      _narrationPaused
+                                          ? '▶️ PLAY'
+                                          : '⏸ PAUSE',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: TColors.goldDeep,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -799,7 +1065,15 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 12),
+
+                    // Who reads? — Mina narrates, or the child reads and
+                    // Mina listens (story scenes only).
+                    if (_isStoryScene(_currentScene)) ...[
+                      _readModeToggle(scene),
+                      const SizedBox(height: 12),
+                    ] else
+                      const SizedBox(height: 10),
 
                     // F7 — Mina reacts to the child (8 states)
                     Mina(state: _minaState(scene), size: 56),
@@ -940,6 +1214,53 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
           boxShadow: TShadows.card,
         ),
         child: Icon(icon, color: TColors.ink, size: 22),
+      ),
+    );
+  }
+
+  /// Who reads this story — a two-way pill: Mina narrates, or the child
+  /// reads by themself while Mina listens and appreciates.
+  Widget _readModeToggle(_DemoScene scene) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: TShadows.card,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _modeChip('🔊 Mina reads', !_iRead, scene.accent,
+              () => _setIRead(false)),
+          _modeChip(
+              '🧒 I read', _iRead, scene.accent, () => _setIRead(true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeChip(
+      String label, bool selected, Color accent, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        // ≥56 dp hit target via padding (AC-03)
+        padding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: selected ? Colors.white : TColors.inkSoft,
+          ),
+        ),
       ),
     );
   }
@@ -1423,7 +1744,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: listening || processing ? null : _startListening,
+                onTap: listening || processing ? null : _micRetry,
                 child: VoiceAura(
                   level: _liveMic.level,
                   color: Colors.white,
@@ -1444,7 +1765,9 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 36),
                 child: Text(
                   listening
-                      ? scene.prompt
+                      ? (_readingTurn
+                          ? 'Read the story to Mina! 📖'
+                          : scene.prompt)
                       : processing
                           ? 'Mina is thinking…'
                           : "Mina couldn't hear you 🤍",
@@ -1482,7 +1805,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     _overlayAction(
                       icon: Icons.mic_rounded,
                       label: 'Try again',
-                      onTap: _startListening,
+                      onTap: _micRetry,
                     ),
                     const SizedBox(width: 14),
                     _overlayAction(

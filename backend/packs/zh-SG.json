@@ -6,8 +6,24 @@
   "providers": {
     "llm": "qwen",
     "vision": "qwen",
-    "asr": { "provider": "paraformer", "language": "zh" },
-    "tts": { "provider": "cosyvoice", "language": "zh", "voice_id": "longxiaochun" }
+    "asr": {
+      "provider": "paraformer",
+      "language": "zh"
+    },
+    "tts": {
+      "provider": "cosyvoice",
+      "language": "zh",
+      "voice_id": "longxiaochun"
+    },
+    "tts_fallback": {
+      "provider": "google",
+      "language": "cmn-CN",
+      "voice_id": "cmn-CN-Wavenet-A"
+    },
+    "asr_fallback": {
+      "provider": "google",
+      "language": "cmn-Hans-CN"
+    }
   },
   "guardian": {
     "spoken_language": "Mandarin Chinese",
@@ -15,19 +31,84 @@
     "cultural_notes": "Keep Singapore context: HDB (组屋), MRT (地铁), hawker centre (小贩中心). Avoid mainland-China-specific slang."
   },
   "word_bank": [
-    { "word": "红色", "romanised": "hóng sè", "english": "red" },
-    { "word": "蓝色", "romanised": "lán sè", "english": "blue" },
-    { "word": "绿色", "romanised": "lǜ sè", "english": "green" },
-    { "word": "黄色", "romanised": "huáng sè", "english": "yellow" },
-    { "word": "火车", "romanised": "huǒ chē", "english": "train" },
-    { "word": "下一个", "romanised": "xià yí gè", "english": "next" },
-    { "word": "车站", "romanised": "chē zhàn", "english": "station" }
+    {
+      "word": "红色",
+      "romanised": "hóng sè",
+      "english": "red"
+    },
+    {
+      "word": "蓝色",
+      "romanised": "lán sè",
+      "english": "blue"
+    },
+    {
+      "word": "绿色",
+      "romanised": "lǜ sè",
+      "english": "green"
+    },
+    {
+      "word": "黄色",
+      "romanised": "huáng sè",
+      "english": "yellow"
+    },
+    {
+      "word": "火车",
+      "romanised": "huǒ chē",
+      "english": "train"
+    },
+    {
+      "word": "下一个",
+      "romanised": "xià yí gè",
+      "english": "next"
+    },
+    {
+      "word": "车站",
+      "romanised": "chē zhàn",
+      "english": "station"
+    }
   ],
   "expected_intents": {
-    "names_a_color": ["红色", "蓝色", "绿色", "黄色", "hong se", "lan se", "lv se", "huang se", "red", "blue", "green", "yellow"],
-    "counts": ["一", "二", "三", "yi", "er", "san", "one", "two", "three"],
-    "predicts_next": ["下一个", "然后", "xia yi ge", "ran hou", "next", "after"],
-    "polite_request": ["请", "给我", "qing", "gei wo", "please", "give"]
+    "names_a_color": [
+      "红色",
+      "蓝色",
+      "绿色",
+      "黄色",
+      "hong se",
+      "lan se",
+      "lv se",
+      "huang se",
+      "red",
+      "blue",
+      "green",
+      "yellow"
+    ],
+    "counts": [
+      "一",
+      "二",
+      "三",
+      "yi",
+      "er",
+      "san",
+      "one",
+      "two",
+      "three"
+    ],
+    "predicts_next": [
+      "下一个",
+      "然后",
+      "xia yi ge",
+      "ran hou",
+      "next",
+      "after"
+    ],
+    "polite_request": [
+      "请",
+      "给我",
+      "qing",
+      "gei wo",
+      "please",
+      "give"
+    ]
   },
   "speech": {
     "keyword_floor": 0.7,
@@ -35,9 +116,23 @@
     "normalization": "NFC"
   },
   "child_copy": {
-    "celebration": ["说得真好！🎉", "太棒了！", "好厉害！"],
-    "encourage_retry": ["再听一次好吗？", "我们慢慢说！"],
-    "listen_prompt": "告诉米娜！"
+    "celebration": [
+      "说得真好！🎉",
+      "太棒了！",
+      "好厉害！"
+    ],
+    "encourage_retry": [
+      "再听一次好吗？",
+      "我们慢慢说！"
+    ],
+    "listen_prompt": "告诉米娜！",
+    "gentle_correction": "很棒的尝试！💪 我们一起说：'{word}' — 再来一次！",
+    "praise_reading": [
+      "哇！你自己读出来了！🌟",
+      "读得真好！👏",
+      "越读越棒！🎉"
+    ],
+    "reading_practice": "我们一起说这个词：'{word}'"
   },
   "family_copy": {
     "say_together": "一起说！ — Say it together!",

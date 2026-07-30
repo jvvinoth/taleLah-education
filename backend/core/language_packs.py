@@ -33,6 +33,10 @@ class PackProviders(BaseModel):
     vision: str = "qwen"
     asr: SpeechProviderConfig
     tts: SpeechProviderConfig
+    # Optional resilience chain — used when the primary provider errors at
+    # call time (e.g. quota exhausted). Same shape as the primary entries.
+    asr_fallback: Optional[SpeechProviderConfig] = None
+    tts_fallback: Optional[SpeechProviderConfig] = None
 
 
 class GuardianConfig(BaseModel):
@@ -57,6 +61,13 @@ class ChildCopy(BaseModel):
     celebration: list[str] = []
     encourage_retry: list[str] = []
     listen_prompt: str = ""
+    # Constructive-feedback copy (AC-04 — always warm, never "wrong"):
+    # gentle_correction teaches the expected word on a miss ({word} slot);
+    # praise_reading celebrates the child reading a scene by themself;
+    # reading_practice invites saying one missed word together ({word} slot).
+    gentle_correction: str = ""
+    praise_reading: list[str] = []
+    reading_practice: str = ""
 
 
 class FamilyCopy(BaseModel):
