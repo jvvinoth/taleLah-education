@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/adventure_deck.dart';
 import '../widgets/live_mic.dart';
 import '../widgets/mina.dart';
 import 'mission_wait.dart';
@@ -1847,6 +1848,8 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         return _buildSpeechTurn(scene);
 
       case 'choice':
+        final opts = adventureOptionsFrom(scene.choices ?? const []);
+        if (opts.isEmpty) return const SizedBox.shrink();
         return Column(
           children: [
             Text(
@@ -1859,35 +1862,13 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 14),
-            ...?scene.choices?.map(
-              (choice) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: GestureDetector(
-                  onTap: _nextScene,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: TShadows.card,
-                      border: Border.all(
-                        color: scene.accent.withValues(alpha: 0.25),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Text(
-                      choice,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: TColors.ink,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            // Tinder-style pick-your-adventure deck. Tapping a card (or Pick)
+            // always chooses — swiping is a delight, never a gate. Any pick
+            // advances, matching the previous button-list behaviour.
+            AdventureDeck(
+              key: ValueKey('deck_$_currentScene'),
+              options: opts,
+              onPick: (_) => _nextScene(),
             ),
           ],
         );
