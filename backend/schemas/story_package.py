@@ -105,6 +105,13 @@ class SceneInteraction(BaseModel):
 
 class StoryScene(BaseModel):
     index: int
+    # A chapter name the way a storybook has one — "The Slipper in the Bushes",
+    # not "Scene 2". Shown above the page in child mode.
+    title: str = ""
+    title_target_lang: str = ""
+    # One picture for this beat of the story, chosen by the writer so it
+    # matches what actually happens here.
+    emoji: str = ""
     narration: str = ""
     narration_target_lang: str = ""
     visual_id: str = ""
@@ -147,6 +154,16 @@ class Story(BaseModel):
     ending_prompt: EndingPrompt = EndingPrompt()
     # Words to learn — the learning plan's target words in the home language
     vocabulary: list[VocabWord] = Field(default_factory=list)
+    # The sing-song line that comes back scene after scene, word for word, so
+    # the child can chant it along with Mina — what makes four scenes feel
+    # like one story instead of four sentences.
+    refrain: str = ""
+    refrain_target_lang: str = ""
+    # The one hero, named once. Translated a single time and then spelled that
+    # same way in every scene — a child who hears three names hears three
+    # different stories.
+    hero_name: str = ""
+    hero_name_target_lang: str = ""
 
 
 class NarrationSegment(BaseModel):

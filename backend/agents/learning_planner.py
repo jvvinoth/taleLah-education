@@ -29,6 +29,9 @@ Rules:
 - Match speaking confidence level, not age alone.
 - Avoid school/test/assessment framing.
 - Target words must be 3-5 simple words the child can practice.
+- Write "target_words" and "target_phrase" in ENGLISH. The app translates them
+  into the child's home language later, and a word written in the wrong script
+  ends up taught to the child as-is. English only — never another script.
 - The target phrase should naturally use the target words.
 - Expected intents are categories like: names_a_color, counts, predicts_next, polite_request.
 
@@ -64,12 +67,31 @@ class LearningPlannerAgent(BaseAgent):
                 result = await self.llm.generate_json(
                     prompt=(
                         f"Child's verified activity facts:\n{facts_text}\n\n"
-                        f"Language: {locale}\n"
+                        f"Home language the child is learning: {locale}\n"
+                        f"(that is context only — write your answer in English)\n"
                         f"Speaking level: {package.child_profile_id and 'emerging' or 'emerging'}\n\n"
                         "Create ONE speaking objective with 3-5 target words."
                     ),
                     system=PLANNER_SYSTEM_PROMPT,
                 )
+                if not self._english_words(result.get("target_words", [])):
+                    # The planner answered in some other script. Those words flow
+                    # straight into the story text and the child's word chips, so
+                    # a wrong-script answer teaches the wrong thing — ask again.
+                    logger.warning(
+                        f"[LearningPlanner] Non-English target words "
+                        f"{result.get('target_words')} — retrying in English"
+                    )
+                    result = await self.llm.generate_json(
+                        prompt=(
+                            f"Child's verified activity facts:\n{facts_text}\n\n"
+                            "Create ONE speaking objective with 3-5 target words.\n"
+                            "IMPORTANT: your previous answer used a non-English "
+                            "script. Write \"target_words\" and \"target_phrase\" "
+                            "using English words and Latin letters only."
+                        ),
+                        system=PLANNER_SYSTEM_PROMPT,
+                    )
 
                 # Parse the response
                 level_str = result.get("level", "emerging")
@@ -81,15 +103,21 @@ class LearningPlannerAgent(BaseAgent):
                 }
 
                 words = result.get("target_words", ["red", "station", "next"])
-                if len(words) < 3:
+                phrase = result.get("target_phrase", "")
+                if len(words) < 3 or not self._english_words(words):
+                    # Fall back together: an English phrase built from words the
+                    # child never sees would not match the chips they practise.
                     words = ["red", "station", "next"]
+                    phrase = "The red train goes to the next station."
                 if len(words) > 5:
                     words = words[:5]
+                if not self._english_words([phrase]):
+                    phrase = " ".join(words).capitalize() + "."
 
                 package.learning_plan = LearningPlan(
                     speaking_goal=result.get("speaking_goal", "Describe one color and predict the next stop."),
                     target_words=words,
-                    target_phrase=result.get("target_phrase", "The red train goes to the next station."),
+                    target_phrase=phrase,
                     level=level_map.get(level_str, ConfidenceLevel.EMERGING),
                     expected_intents=result.get("expected_intents", ["names_a_color", "predicts_next"]),
                 )
@@ -106,6 +134,19 @@ class LearningPlannerAgent(BaseAgent):
 
         self._record_provenance(package)
         return package
+
+    @staticmethod
+    def _english_words(words: list) -> bool:
+        """True when every word is written in Latin letters. The plan travels
+        through the story text and the child's word chips in English and is
+        translated once, at the end — so a Hindi or Chinese word here is not a
+        head start, it is a word the child gets taught in the wrong language."""
+        if not words:
+            return False
+        return all(
+            str(w).strip() and str(w).isascii()
+            for w in words
+        )
 
     def _fallback_plan(self) -> LearningPlan:
         return LearningPlan(

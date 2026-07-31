@@ -227,6 +227,12 @@ class SpeechFallbackChoice(BaseModel):
     selected_word: str = ""
 
 
+class SpeakRequest(BaseModel):
+    """On-demand TTS for feedback Mina composes live (word tutoring).
+    Length-bounded — a session speaks one short sentence, never an essay."""
+    text: str = Field(min_length=1, max_length=200)
+
+
 # ── Session ────────────────────────────────────────────────────────────────
 
 class SessionStart(BaseModel):

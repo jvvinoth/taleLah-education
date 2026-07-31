@@ -52,11 +52,30 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   // Narration speed — playback multiplier over the storyteller-paced audio
   // (generated at ~0.8 pace). Parents pick what their child follows best.
   double _paceRate = 1.0;
+  // How fast she tells it is a grown-up's dial, not a child's, so it stays
+  // folded away until someone asks for it.
+  bool _showPace = false;
+
+  // Which way the last page turn went, so the new page slides in from the
+  // side the child pushed from.
+  bool _pageForward = true;
 
   // Words to learn — tap a chip: Mina says the word, the child repeats,
-  // Mina celebrates. One word at a time; independent of the answer turns.
+  // and Mina TUTORS the attempt: she hears it, cross-checks it against the
+  // letters of the word, and answers what was actually said. No stock
+  // praise — a near miss names the one sound to fix and models it again.
   int _vocabActive = -1; // index into story.vocabulary
-  String _vocabPhase = 'idle'; // idle | speaking | listening | celebrate
+  // idle | speaking | listening | thinking | coach | celebrate
+  String _vocabPhase = 'idle';
+  String _vocabVerdict = ''; // perfect | close | different | unclear
+  String _vocabFeedback = ''; // Mina's answer to THIS attempt
+  String _vocabFocus = ''; // the one syllable worth another go
+  int _vocabAttempt = 0;
+  static const _vocabMaxTries = 3;
+
+  // Coaching lines are composed per attempt, so they can't come from the
+  // pre-generated manifest — they're synthesized on demand and played here.
+  final AudioPlayer _livePlayer = AudioPlayer();
 
   // F7 — hold-to-exit gate (AC-03): 3 s continuous press opens the parent gate
   Timer? _holdTimer;
@@ -109,6 +128,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     _autoListenTimer?.cancel();
     _holdTimer?.cancel();
     _liveMic.dispose();
+    _livePlayer.dispose();
     for (final p in _players.values) {
       p.dispose();
     }
@@ -125,15 +145,25 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       final s = story.scenes[i];
       final palette = _demoScenes[i % _demoScenes.length];
       final isChoice = s.interactionType == 'choice' && s.options.isNotEmpty;
+      // The writer named this chapter and chose its picture, so use theirs.
+      // Home-language title first — it sits above home-language narration.
+      final chapter = s.titleTargetLang.isNotEmpty
+          ? s.titleTargetLang
+          : s.title.isNotEmpty
+              ? s.title
+              : i == 0 && story.title.isNotEmpty
+                  ? story.title
+                  : 'Chapter ${i + 1}';
       scenes.add(_DemoScene(
-        title: i == 0 && story.title.isNotEmpty
-            ? story.title
-            : 'Chapter ${i + 1}',
+        title: chapter,
+        kicker: 'Chapter ${i + 1}',
         narration: s.narrationTargetLang.isNotEmpty
             ? s.narrationTargetLang
             : s.narration,
         english: s.narration,
-        emoji: _sceneEmojis[i % _sceneEmojis.length],
+        emoji: s.emoji.isNotEmpty
+            ? s.emoji
+            : _sceneEmojis[i % _sceneEmojis.length],
         interaction: isChoice ? 'choice' : 'speak',
         prompt: isChoice
             ? 'What do you choose?'
@@ -149,6 +179,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       final palette = _demoScenes[3];
       scenes.add(_DemoScene(
         title: 'Mission Time!',
+        kicker: 'Mission',
         narration: story.missionTargetLang.isNotEmpty
             ? story.missionTargetLang
             : story.mission,
@@ -166,6 +197,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       final palette = _demoScenes[1];
       scenes.add(_DemoScene(
         title: 'Family Time!',
+        kicker: 'Family',
         narration: story.handoffPromptTargetLang.isNotEmpty
             ? story.handoffPromptTargetLang
             : story.handoffPrompt,
@@ -435,16 +467,35 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         sceneIndex: sceneIndex,
       );
       if (!mounted) return;
-      // ALWAYS appreciation first; at most one word to practise together —
-      // constructive, never demotivating (AC-04).
+      // Appreciation first, always — but WHAT is said follows the reading:
+      // how much actually landed, and the one sound worth another go.
       final praise = r['praise_copy'] as String? ?? '🌟';
       final practice = r['practice_copy'] as String? ?? '';
+      final verdict = r['verdict'] as String? ?? 'unclear';
+      final focus = r['focus_part'] as String? ?? '';
+      final read = r['words_read'] as int? ?? 0;
+      final total = r['words_total'] as int? ?? 0;
+      final lines = <String>[];
+      if (verdict == 'unclear') {
+        // We heard nothing — no praise for a reading we can't vouch for,
+        // and no blame either.
+        lines.add(r['encourage_copy'] as String? ?? "Let's try once more!");
+      } else {
+        lines.add(praise);
+        if (verdict == 'fluent') {
+          lines.add('🌟 You read the whole thing!');
+        } else if (total > 0) {
+          lines.add('📖 You read $read of $total words');
+        }
+        if (practice.isNotEmpty) {
+          lines.add(focus.isNotEmpty ? '$practice  →  $focus' : practice);
+        }
+      }
       setState(() {
         _speechPhase = 'celebrate';
-        _feedbackCopy =
-            practice.isNotEmpty ? '$praise\n$practice' : praise;
+        _feedbackCopy = lines.join('\n');
       });
-      _playFeedback('praise_reading');
+      _playFeedback(verdict == 'unclear' ? 'encourage' : 'praise_reading');
     } catch (_) {
       _celebrateLocally();
     }
@@ -611,63 +662,201 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     _narrationPaused = false;
     _vocabActive = -1;
     _vocabPhase = 'idle';
+    _vocabVerdict = '';
+    _vocabFeedback = '';
+    _vocabFocus = '';
+    _vocabAttempt = 0;
   }
 
-  // ── Words to learn — speak → repeat → praise ────────────────────
+  // ── Words to learn — hear → analyse → cross-check → correct ─────
 
-  /// Child taps a word chip: Mina says the word slowly, then opens her
-  /// ears for the child to repeat it, then celebrates the try. Every
-  /// attempt is a win — never scored, never corrected (AC-04).
+  /// Child taps a word chip: Mina models the word, opens her ears, then
+  /// judges the attempt against the letters of the word and answers what
+  /// was actually said. Tapping again while she's coaching is a retry.
   Future<void> _practiceWord(int i) async {
-    if (_vocabPhase == 'speaking' || _vocabPhase == 'listening') return;
+    if (_vocabPhase == 'speaking' ||
+        _vocabPhase == 'listening' ||
+        _vocabPhase == 'thinking') {
+      return;
+    }
     _autoListenTimer?.cancel();
+    _livePlayer.stop();
     for (final p in _players.values) {
       p.stop();
     }
+    // A different word — or a settled one — starts the count over; tapping
+    // mid-coaching keeps it, so three goes really means three.
+    final retry = _vocabActive == i && _vocabPhase == 'coach';
     setState(() {
       _vocabActive = i;
       _vocabPhase = 'speaking';
+      if (!retry) {
+        _vocabAttempt = 0;
+        _vocabVerdict = '';
+        _vocabFeedback = '';
+        _vocabFocus = '';
+      }
     });
+    await _modelWord(i);
+    if (!mounted || _vocabActive != i) return;
+    await _listenForWord(i);
+  }
+
+  /// Mina says the word on its own — a touch slower than the story, since
+  /// this is modelling rather than narration.
+  Future<void> _modelWord(int i) async {
     final player = _players['vocab_$i'];
-    if (player != null) {
+    if (player == null) return;
+    try {
+      await player.setPlaybackRate((0.9 * _paceRate).clamp(0.65, 1.5));
+      await player
+          .seek(Duration.zero)
+          .timeout(const Duration(seconds: 2), onTimeout: () {});
+      await player.resume();
+      await player.onPlayerComplete.first
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('Vocab play failed for vocab_$i: $e');
+    }
+  }
+
+  /// The child's turn — one short window, closed by silence. Every mic
+  /// opening counts as a go, whether the child tapped for it or Mina looped
+  /// back after a correction.
+  Future<void> _listenForWord(int i) async {
+    setState(() {
+      _vocabPhase = 'listening';
+      _vocabAttempt += 1;
+    });
+    if (!await _liveMic.hasPermission()) {
+      // No mic: we can't judge what we never heard, so we don't pretend to.
+      if (!mounted || _vocabActive != i) return;
+      setState(() {
+        _vocabPhase = 'coach';
+        _vocabVerdict = 'unclear';
+        _vocabFeedback = 'Say it out loud with Mina — tap to hear it again!';
+      });
+      return;
+    }
+    final result = await _liveMic.listen(
+      maxDuration: const Duration(seconds: 6),
+      silenceAfter: const Duration(milliseconds: 1200),
+      noSpeechTimeout: const Duration(seconds: 5),
+    );
+    if (!mounted || _vocabActive != i || _vocabPhase != 'listening') return;
+    if (result == null || !result.heardSpeech) {
+      setState(() {
+        _vocabPhase = 'coach';
+        _vocabVerdict = 'unclear';
+        _vocabFeedback = "I didn't catch that — tap the word and say it loud!";
+      });
+      _playFeedback('encourage');
+      return;
+    }
+    await _judgeWord(i, result.wavBytes);
+  }
+
+  /// Hear → analyse → cross-check with the letters → correct with feedback.
+  /// The backend returns a verdict for THIS attempt plus the one syllable
+  /// that slipped; a miss is answered by naming it and modelling the word
+  /// again, not by a stock "Super!".
+  Future<void> _judgeWord(int i, List<int> bytes) async {
+    final app = context.read<AppState>();
+    setState(() => _vocabPhase = 'thinking');
+    final sessionId = app.sessionId;
+    Map<String, dynamic>? r;
+    if (sessionId != null) {
       try {
-        // A touch slower than the story — single-word modelling.
-        await player.setPlaybackRate((0.9 * _paceRate).clamp(0.65, 1.5));
-        await player
-            .seek(Duration.zero)
-            .timeout(const Duration(seconds: 2), onTimeout: () {});
-        await player.resume();
-        await player.onPlayerComplete.first
-            .timeout(const Duration(seconds: 10));
+        r = await app.api.wordPracticeTurn(
+          sessionId: sessionId,
+          audioBytes: bytes,
+          wordIndex: i,
+        );
       } catch (e) {
-        debugPrint('Vocab play failed for vocab_$i: $e');
+        debugPrint('Word practice failed: $e');
       }
     }
     if (!mounted || _vocabActive != i) return;
-
-    // Now the child's turn — short single-word window.
-    setState(() => _vocabPhase = 'listening');
-    if (await _liveMic.hasPermission()) {
-      await _liveMic.listen(
-        maxDuration: const Duration(seconds: 6),
-        silenceAfter: const Duration(milliseconds: 1200),
-        noSpeechTimeout: const Duration(seconds: 5),
-      );
-    } else {
-      // No mic — give the child a beat to say it out loud anyway.
-      await Future.delayed(const Duration(seconds: 3));
-    }
-    if (!mounted || _vocabActive != i) return;
-
-    setState(() => _vocabPhase = 'celebrate');
-    _playFeedback('celebrate');
-    Timer(const Duration(milliseconds: 2600), () {
-      if (!mounted || _vocabActive != i) return;
+    if (r == null) {
+      // Backend unreachable — no verdict is honest, a fake one isn't.
       setState(() {
-        _vocabActive = -1;
-        _vocabPhase = 'idle';
+        _vocabPhase = 'coach';
+        _vocabVerdict = 'unclear';
+        _vocabFeedback = 'Let me hear that once more — tap the word!';
       });
+      return;
+    }
+
+    final action = r['next_action'] as String? ?? 'model_again';
+    final feedback = (r['feedback_copy'] as String? ?? '').trim();
+    final verdict = r['verdict'] as String? ?? 'unclear';
+    final focus = r['focus_part'] as String? ?? '';
+    final word = r['word'] as String? ?? _story?.vocabulary[i].wordTargetLang;
+    final lastTry = _vocabAttempt >= _vocabMaxTries;
+    setState(() {
+      _vocabVerdict = verdict;
+      _vocabFocus = focus;
+      _vocabFeedback = feedback;
+      _vocabPhase = action == 'celebrate' ? 'celebrate' : 'coach';
     });
+
+    if (action == 'celebrate') {
+      // Praise that names the word they just nailed — spoken, not canned.
+      if (!await _speakLive(feedback)) _playFeedback('celebrate');
+      if (!mounted || _vocabActive != i) return;
+      Timer(const Duration(milliseconds: 2600), () {
+        if (!mounted || _vocabActive != i) return;
+        setState(() {
+          _vocabActive = -1;
+          _vocabPhase = 'idle';
+          _vocabVerdict = '';
+          _vocabFeedback = '';
+          _vocabFocus = '';
+        });
+      });
+      return;
+    }
+
+    // Not there yet — say the correction, then model the word again so the
+    // fix is heard right after it's named.
+    if (!await _speakLive(feedback)) _playFeedback('encourage');
+    if (!mounted || _vocabActive != i || _vocabPhase != 'coach') return;
+    await _modelWord(i);
+    if (!mounted || _vocabActive != i || _vocabPhase != 'coach') return;
+    if (lastTry) {
+      // Three goes is plenty for one word — always end warmly.
+      setState(() => _vocabFeedback =
+          'Good trying! We\'ll practise ${word ?? 'it'} again later 💛');
+      return;
+    }
+    await _listenForWord(i);
+  }
+
+  /// Speak a line Mina composed live. Returns false when no voice came
+  /// back — the text still shows, so feedback never depends on TTS.
+  Future<bool> _speakLive(String text) async {
+    if (text.isEmpty) return false;
+    final app = context.read<AppState>();
+    final sessionId = app.sessionId;
+    if (sessionId == null) return false;
+    final clip = await app.api.speak(sessionId: sessionId, text: text);
+    if (clip == null || !mounted) return false;
+    try {
+      for (final p in _players.values) {
+        p.stop();
+      }
+      await _livePlayer.setReleaseMode(ReleaseMode.stop);
+      await _livePlayer.setPlaybackRate(1.0);
+      await _livePlayer
+          .play(BytesSource(clip.bytes, mimeType: clip.mimeType))
+          .timeout(const Duration(seconds: 12));
+      await _livePlayer.onPlayerComplete.first
+          .timeout(const Duration(seconds: 15));
+      return true;
+    } catch (e) {
+      debugPrint('Live coaching speech failed: $e');
+      return false;
+    }
   }
 
   // ── F7 · child-mode lockdown (AC-03) ──────────────────────
@@ -952,32 +1141,27 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
             child: Stack(children: [
               Column(
           children: [
-            // Top bar — hold-to-exit gate + progress dots
+            // Top bar — hold-to-exit gate + the trail of pages
             Padding(
               padding: EdgeInsets.fromLTRB(20, topPad + 12, 20, 0),
               child: Row(
                 children: [
                   _holdExitButton(),
-                  const Spacer(),
-                  ...List.generate(_scenes.length, (i) {
-                    final active = i == _currentScene;
-                    final done = i < _currentScene;
-                    return AnimatedContainer(
-                      duration: _anim(300),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: active ? 28 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: active
-                            ? scene.accent
-                            : done
-                                ? scene.accent.withValues(alpha: 0.5)
-                                : Colors.white.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(6),
+                  const SizedBox(width: 10),
+                  // Where the child is in the book, told in pictures. Scales
+                  // itself down rather than overflowing on a narrow phone.
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        children: [
+                          for (var i = 0; i < _scenes.length; i++)
+                            _pageBead(i, scene.accent),
+                        ],
                       ),
-                    );
-                  }),
-                  const Spacer(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 7),
@@ -999,168 +1183,73 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               ),
             ),
 
-            // Scene content
+            // Scene content — one storybook page, turned by swiping.
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 24),
-                    // Big emoji in soft bubble
-                    Container(
-                      width: 130,
-                      height: 130,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: scene.accent.withValues(alpha: 0.25),
-                            blurRadius: 40,
-                            offset: const Offset(0, 14),
-                          ),
-                        ],
+              child: GestureDetector(
+                // A child turns a page by pushing it aside; the arrows stay for
+                // the ones who'd rather tap.
+                onHorizontalDragEnd: _onPageSwipe,
+                child: AnimatedSwitcher(
+                  duration: _anim(320),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final dx = _pageForward ? 1.0 : -1.0;
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: Offset(dx * 0.18, 0),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
                       ),
-                      child: Center(
-                        child: Text(scene.emoji,
-                            style: const TextStyle(fontSize: 64)),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Scene title
-                    Text(
-                      scene.title,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        color: TColors.ink,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Glass narration card
-                    TCard(
-                      radius: 26,
-                      padding: const EdgeInsets.all(22),
-                      shadows: TShadows.soft,
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: _hasAudio(scene)
-                                    ? () => _playNarration(_currentScene)
-                                    : null,
-                                // Padding grows the hit area to ≥56 dp
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 22, vertical: 17),
-                                  decoration: BoxDecoration(
-                                    color: _hasAudio(scene)
-                                        ? TColors.mist
-                                        : TColors.lemon,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    _hasAudio(scene)
-                                        ? '🔊 LISTEN'
-                                        : '📖 READ ALOUD',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: _hasAudio(scene)
-                                          ? TColors.tealDeep
-                                          : TColors.goldDeep,
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (_hasAudio(scene) && !_iRead) ...[
-                                const SizedBox(width: 8),
-                                // Pause/resume — like a parent pausing the book
-                                GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: _togglePause,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 22, vertical: 17),
-                                    decoration: BoxDecoration(
-                                      color: TColors.lemon,
-                                      borderRadius:
-                                          BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      _narrationPaused
-                                          ? '▶️ PLAY'
-                                          : '⏸ PAUSE',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        color: TColors.goldDeep,
-                                        letterSpacing: 0.8,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 12),
+                    );
+                  },
+                  child: SingleChildScrollView(
+                    key: ValueKey(_currentScene),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        _storyPage(scene),
+                        if (_currentScene == 0 && _scenes.length > 1) ...[
+                          const SizedBox(height: 10),
                           Text(
-                            scene.narration,
-                            style: const TextStyle(
-                              fontSize: 21,
+                            'Swipe to turn the page  👉',
+                            style: TextStyle(
+                              fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              height: 1.45,
-                              color: TColors.ink,
+                              color: TColors.inkFaint.withValues(alpha: 0.9),
                             ),
-                            textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            scene.english,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: TColors.inkFaint,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          // ✨ Words to learn — tap a word: Mina says it,
-                          // the child repeats, Mina celebrates.
-                          if (_isStoryScene(_currentScene) &&
-                              (_story?.vocabulary.isNotEmpty ?? false))
-                            _vocabSection(scene),
                         ],
-                      ),
+                        const SizedBox(height: 12),
+
+                        // Who reads? — Mina narrates, or the child reads and
+                        // Mina listens (story scenes only). How fast she tells
+                        // it is a grown-up's dial, so it stays tucked away.
+                        if (_isStoryScene(_currentScene)) ...[
+                          _readModeToggle(scene),
+                          const SizedBox(height: 8),
+                          if (_showPace) ...[
+                            _paceToggle(scene),
+                            const SizedBox(height: 8),
+                          ],
+                          const SizedBox(height: 4),
+                        ] else
+                          const SizedBox(height: 10),
+
+                        // F7 — Mina reacts to the child (8 states)
+                        Mina(state: _minaState(scene), size: 56),
+                        const SizedBox(height: 14),
+
+                        // Interaction area
+                        _buildInteraction(scene),
+                        const SizedBox(height: 20),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-
-                    // Who reads? — Mina narrates, or the child reads and
-                    // Mina listens (story scenes only). Below it the parent
-                    // can tune how fast Mina tells the story.
-                    if (_isStoryScene(_currentScene)) ...[
-                      _readModeToggle(scene),
-                      const SizedBox(height: 8),
-                      _paceToggle(scene),
-                      const SizedBox(height: 12),
-                    ] else
-                      const SizedBox(height: 10),
-
-                    // F7 — Mina reacts to the child (8 states)
-                    Mina(state: _minaState(scene), size: 56),
-                    const SizedBox(height: 14),
-
-                    // Interaction area
-                    _buildInteraction(scene),
-                    const SizedBox(height: 20),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -1173,13 +1262,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                   if (_currentScene > 0)
                     _roundButton(
                       Icons.arrow_back_rounded,
-                      onTap: () {
-                        setState(() {
-                          _currentScene--;
-                          _resetSpeechState();
-                        });
-                        _playScene(_currentScene);
-                      },
+                      onTap: _previousScene,
                     ),
                   const Spacer(),
                   GestureDetector(
@@ -1280,6 +1363,35 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     );
   }
 
+  /// One page in the trail across the top. The page being read wears its
+  /// own picture; the ones already read keep a small badge, so the child
+  /// can see the story filling up behind them.
+  Widget _pageBead(int index, Color accent) {
+    final active = index == _currentScene;
+    final done = index < _currentScene;
+    return AnimatedContainer(
+      duration: _anim(300),
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      width: active ? 34 : 22,
+      height: active ? 34 : 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: done ? accent.withValues(alpha: 0.85) : Colors.white,
+        shape: BoxShape.circle,
+        border: active ? Border.all(color: accent, width: 2.5) : null,
+        boxShadow: active ? TShadows.card : null,
+      ),
+      child: Text(
+        done ? '✓' : _scenes[index].emoji,
+        style: TextStyle(
+          fontSize: active ? 17 : 11,
+          fontWeight: FontWeight.w800,
+          color: done ? Colors.white : null,
+        ),
+      ),
+    );
+  }
+
   Widget _roundButton(IconData icon, {required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -1307,24 +1419,51 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   }
 
   /// Who reads this story — a two-way pill: Mina narrates, or the child
-  /// reads by themself while Mina listens and appreciates.
+  /// reads by themself while Mina listens and appreciates. The speed dial
+  /// hides behind the small button beside it.
   Widget _readModeToggle(_DemoScene scene) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: TShadows.card,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _modeChip('🔊 Mina reads', !_iRead, scene.accent,
-              () => _setIRead(false)),
-          _modeChip(
-              '🧒 I read', _iRead, scene.accent, () => _setIRead(true)),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: TShadows.card,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _modeChip('🔊 Mina reads', !_iRead, scene.accent,
+                  () => _setIRead(false)),
+              _modeChip(
+                  '🧒 I read', _iRead, scene.accent, () => _setIRead(true)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _showPace = !_showPace),
+          child: Container(
+            width: 56, // AC-03 — ≥56 dp
+            height: 56,
+            decoration: BoxDecoration(
+              color: _showPace
+                  ? scene.accent
+                  : Colors.white.withValues(alpha: 0.75),
+              shape: BoxShape.circle,
+              boxShadow: TShadows.card,
+            ),
+            child: Icon(
+              Icons.speed_rounded,
+              size: 22,
+              color: _showPace ? Colors.white : TColors.inkSoft,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1377,9 +1516,242 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     );
   }
 
+  /// One page of the storybook: a picture panel on top, the words below —
+  /// the shape of a board book, so a child looks at the picture first and
+  /// the words second.
+  Widget _storyPage(_DemoScene scene) {
+    final story = _story;
+    final refrain = story == null
+        ? ''
+        : story.refrainTargetLang.isNotEmpty
+            ? story.refrainTargetLang
+            : story.refrain;
+    final gloss = scene.english;
+    final showGloss = gloss.isNotEmpty && gloss != scene.narration;
+    final onStoryPage = _isStoryScene(_currentScene);
+
+    return TCard(
+      radius: 30,
+      padding: EdgeInsets.zero,
+      shadows: TShadows.soft,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: Column(
+          children: [
+            _picturePanel(scene),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+              child: Column(
+                children: [
+                  Text(
+                    scene.title,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                      color: scene.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // The story itself, in the home language, set big enough
+                  // to follow along with a finger.
+                  Text(
+                    scene.narration,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      height: 1.65,
+                      fontWeight: FontWeight.w700,
+                      color: TColors.ink,
+                    ),
+                  ),
+                  if (showGloss) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      gloss,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
+                        color: TColors.inkFaint,
+                      ),
+                    ),
+                  ],
+                  if (onStoryPage && refrain.isNotEmpty)
+                    _refrainBanner(scene, refrain),
+                  if (onStoryPage && (_story?.vocabulary.isNotEmpty ?? false))
+                    _vocabSection(scene),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The picture half of the page — the chapter's own emoji, big, with the
+  /// chapter label tucked in one corner and the voice buttons in the other.
+  Widget _picturePanel(_DemoScene scene) {
+    return SizedBox(
+      height: 190,
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    scene.accent.withValues(alpha: 0.18),
+                    scene.accent.withValues(alpha: 0.05),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Two soft blobs, so the picture sits in a scene and not on a
+          // flat wash of colour.
+          Positioned(right: -24, top: -28, child: _blob(110, scene.accent)),
+          Positioned(left: -20, bottom: -34, child: _blob(92, scene.accent)),
+          Center(
+            child: Text(scene.emoji, style: const TextStyle(fontSize: 88)),
+          ),
+          if (scene.kicker.isNotEmpty)
+            Positioned(
+              left: 14,
+              top: 14,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  scene.kicker.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.9,
+                    color: scene.accent,
+                  ),
+                ),
+              ),
+            ),
+          if (_hasAudio(scene))
+            Positioned(right: 12, bottom: 12, child: _pageVoice(scene)),
+        ],
+      ),
+    );
+  }
+
+  Widget _blob(double size, Color accent) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+
+  /// Read it to me again, or hold it right there — the two things a child
+  /// asks for mid-story, on the page itself.
+  Widget _pageVoice(_DemoScene scene) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _togglePause,
+          child: Container(
+            width: 56, // AC-03 — ≥56 dp
+            height: 56,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: TShadows.card,
+            ),
+            child: Icon(
+              _narrationPaused
+                  ? Icons.play_arrow_rounded
+                  : Icons.pause_rounded,
+              color: TColors.ink,
+              size: 24,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _playNarration(_currentScene),
+          child: Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: scene.accent,
+              shape: BoxShape.circle,
+              boxShadow: TShadows.card,
+            ),
+            child: const Icon(Icons.volume_up_rounded,
+                color: Colors.white, size: 26),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The story's chant. Grandma says it the same way every single night, so
+  /// it gets its own line on the page to join in with.
+  Widget _refrainBanner(_DemoScene scene, String refrain) {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: TColors.lemon.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: TColors.gold.withValues(alpha: 0.6),
+          width: 1.4,
+        ),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            '👏 SAY IT WITH ME',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.9,
+              color: TColors.goldDeep,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            refrain,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 18,
+              height: 1.4,
+              fontWeight: FontWeight.w800,
+              color: TColors.ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// ✨ Words to learn — highlighted chips on the story card. Tap one:
-  /// Mina speaks the home-language word, the child repeats it, Mina
-  /// celebrates. Native script big, English meaning small.
+  /// Mina speaks the home-language word, the child repeats it, and Mina
+  /// answers the actual attempt — naming the sound to fix when it slipped.
+  /// Native script big, English meaning small.
   Widget _vocabSection(_DemoScene scene) {
     final vocab = _story?.vocabulary ?? [];
     return Column(
@@ -1408,26 +1780,92 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         if (_vocabActive >= 0) ...[
           const SizedBox(height: 10),
           Text(
-            _vocabPhase == 'speaking'
-                ? '🔊 Listen…'
-                : _vocabPhase == 'listening'
-                    ? '🎤 Your turn — say it!'
-                    : '🌟 Great job!',
+            _vocabStatus(),
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w800,
               color: scene.accent,
             ),
           ),
+          // The one syllable that slipped — shown big, because that is the
+          // thing to try again, not the whole word.
+          if (_vocabFocus.isNotEmpty && _vocabVerdict == 'close') ...[
+            const SizedBox(height: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: TColors.lemon.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: TColors.gold.withValues(alpha: 0.7),
+                  width: 1.4,
+                ),
+              ),
+              child: Text(
+                'this sound → $_vocabFocus',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: TColors.ink,
+                ),
+              ),
+            ),
+          ],
+          if (_vocabFeedback.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              _vocabFeedback,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: TColors.inkSoft,
+              ),
+            ),
+          ],
         ],
       ],
     );
   }
 
+  /// One line naming where this attempt stands — driven by the verdict, so
+  /// it changes with what the child actually said.
+  String _vocabStatus() {
+    switch (_vocabPhase) {
+      case 'speaking':
+        return '🔊 Listen…';
+      case 'listening':
+        return '🎤 Your turn — say it!';
+      case 'thinking':
+        return '👂 Mina is checking…';
+      case 'celebrate':
+        return '🌟 You said it right!';
+      default:
+        switch (_vocabVerdict) {
+          case 'close':
+            return '👂 So close — one sound to fix';
+          case 'different':
+            return '🔁 Listen once more, then try';
+          default:
+            return "🎤 I couldn't hear it clearly";
+        }
+    }
+  }
+
   Widget _vocabChip(int i, _DemoScene scene) {
     final vw = _story!.vocabulary[i];
     final active = _vocabActive == i;
-    final celebrated = active && _vocabPhase == 'celebrate';
+    // The badge tracks the verdict: nailed it, or worth another go.
+    final badge = !active
+        ? '🔊'
+        : _vocabPhase == 'celebrate'
+            ? '🌟'
+            : _vocabPhase == 'coach'
+                ? '🔁'
+                : '🔊';
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _practiceWord(i),
@@ -1449,9 +1887,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              celebrated
-                  ? '🌟 ${vw.wordTargetLang}'
-                  : '🔊 ${vw.wordTargetLang}',
+              '$badge ${vw.wordTargetLang}',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -2141,12 +2577,37 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   void _nextScene() {
     if (_currentScene < _scenes.length - 1) {
       setState(() {
+        _pageForward = true;
         _currentScene++;
         _resetSpeechState();
       });
       _playScene(_currentScene);
     } else {
       _finishSession();
+    }
+  }
+
+  void _previousScene() {
+    if (_currentScene == 0) return;
+    setState(() {
+      _pageForward = false;
+      _currentScene--;
+      _resetSpeechState();
+    });
+    _playScene(_currentScene);
+  }
+
+  /// A page turn. Flick left and the next page comes in; flick right and
+  /// the last one comes back. The final swipe stops at the last page —
+  /// ending the story stays a deliberate tap on "Finish!", never a flick.
+  void _onPageSwipe(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() < 220) return; // a nudge is not a page turn
+    if (velocity < 0) {
+      if (_currentScene >= _scenes.length - 1) return;
+      _nextScene();
+    } else {
+      _previousScene();
     }
   }
 
@@ -2477,6 +2938,8 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
 
 class _DemoScene {
   final String title;
+  /// Small label above the title — "Chapter 2", "Mission", "Family".
+  final String kicker;
   final String narration;
   final String english;
   final String emoji;
@@ -2490,6 +2953,7 @@ class _DemoScene {
 
   const _DemoScene({
     required this.title,
+    this.kicker = '',
     required this.narration,
     required this.english,
     required this.emoji,

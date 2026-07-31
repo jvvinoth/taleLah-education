@@ -113,7 +113,15 @@
       "Bagus bacaannya! 👏",
       "Makin pandai membaca! 🎉"
     ],
-    "reading_practice": "Jom sebut sama-sama: '{word}'"
+    "reading_practice": "Jom sebut sama-sama: '{word}'",
+    "word_perfect": [
+      "'{word}' — betul-betul tepat! 🌟",
+      "'{word}' sebutan yang betul! 👏",
+      "'{word}' — sempurna! 🎉"
+    ],
+    "word_close": "Dah hampir! Cuba bunyi ini: '{part}' — '{word}'. Jom sebut sama-sama!",
+    "word_retry": "Dengar Mina dulu, kemudian sebut: '{word}' 💪",
+    "word_unclear": "Mina tak dengar suara kamu! Sebut sekali lagi kuat-kuat: '{word}'"
   },
   "family_copy": {
     "say_together": "Jom sebut sama-sama! — Say it together!",

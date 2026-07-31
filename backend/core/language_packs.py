@@ -72,6 +72,16 @@ class ChildCopy(BaseModel):
     gentle_correction: str = ""
     praise_reading: list[str] = []
     reading_practice: str = ""
+    # Word-practice tutoring (✨ Words to learn). Mina listens to the child
+    # repeat one word and answers what she actually heard:
+    #   word_perfect  — said it right ({word})
+    #   word_close    — nearly there; names the syllable to fix ({word}, {part})
+    #   word_retry    — quite different; models the word again ({word})
+    #   word_unclear  — nothing audible; not the child's fault, ask again
+    word_perfect: list[str] = []
+    word_close: str = ""
+    word_retry: str = ""
+    word_unclear: str = ""
 
 
 class FamilyCopy(BaseModel):

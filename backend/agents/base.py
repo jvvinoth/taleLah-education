@@ -42,6 +42,17 @@ class BaseAgent(ABC):
             return self.llm_registry[pack.providers.llm], pack.providers.llm
         return self.llm, "qwen-max" if self.llm else "fallback"
 
+    def _drafting_llm(self, package: StoryPackage) -> tuple[Optional[LLMProvider], str]:
+        """LLM for long English drafts (the story itself), as opposed to native
+        language work. The pack LLM is chosen for native-script quality on short
+        text; asked for a whole story as JSON, a small native model returns a
+        few characters and the child is left with filler scenes. So draft with
+        the default reasoning model and let the Language Guardian carry it into
+        the home language. Falls back to the pack LLM if no default exists."""
+        if self.llm:
+            return self.llm, "qwen-max"
+        return self._llm_for(package)
+
     @abstractmethod
     async def execute(self, package: StoryPackage) -> StoryPackage:
         """

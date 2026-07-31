@@ -1,6 +1,7 @@
 /// TaleLah API client — talks to the FastAPI backend.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -508,6 +509,62 @@ class ApiClient {
       throw ApiException(res.statusCode, 'Read-aloud turn failed');
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// ✨ Words to learn — the child repeats one word and Mina tutors it:
+  /// she hears the attempt, cross-checks it against the letters of the
+  /// target word, and answers what was actually said. Comes back with a
+  /// `verdict` (perfect / close / different / unclear), the one `focus_part`
+  /// worth practising, and the `next_action` to drive. Transcript never
+  /// comes back — everything returned derives from the target word.
+  Future<Map<String, dynamic>> wordPracticeTurn({
+    required String sessionId,
+    required List<int> audioBytes,
+    required int wordIndex,
+  }) async {
+    final req = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/sessions/$sessionId/word-practice'),
+    );
+    if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
+    req.fields['word_index'] = '$wordIndex';
+    req.files.add(http.MultipartFile.fromBytes(
+      'audio',
+      audioBytes,
+      filename: 'word.wav',
+    ));
+    final streamed = await req.send().timeout(const Duration(seconds: 30));
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'Word practice turn failed');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// On-demand TTS in the story's voice — for the coaching lines Mina
+  /// composes live ("the tricky bit is ன"), which can't be pre-generated
+  /// at approval time. Returns null when no voice is available, so the
+  /// caller can still show the text.
+  Future<({Uint8List bytes, String mimeType})?> speak({
+    required String sessionId,
+    required String text,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            Uri.parse('$baseUrl/sessions/$sessionId/speak'),
+            headers: _headers,
+            body: jsonEncode({'text': text}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode >= 400 || res.bodyBytes.isEmpty) return null;
+      return (
+        bytes: res.bodyBytes,
+        mimeType: res.headers['content-type'] ?? 'audio/wav',
+      );
+    } catch (_) {
+      return null; // voice is a bonus — the written feedback still lands
+    }
   }
 
   // ── Sprint 4 · F8/F9/F10 — session milestones, summary, memories ──

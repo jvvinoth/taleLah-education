@@ -109,3 +109,16 @@ def test_reading_is_fuzzy_against_asr_noise():
     # child must still get full credit for what they read.
     r = score_reading("ஒரு நாள அருண சிவப்பு ரயிலை பார்த்தான்", NARRATION)
     assert r.heard and r.score >= 0.8
+
+
+def test_asr_noise_on_a_quiet_mic_is_not_a_reading():
+    # A quiet mic makes Sarvam emit a stray syllable. Counting that as a
+    # reading would tell a child who never spoke "you read 0 of 6 words".
+    r = score_reading("ம்", NARRATION)
+    assert not r.heard and r.score == 0.0
+
+
+def test_one_real_word_still_counts_as_read():
+    # The guard above must not swallow a genuine short attempt.
+    r = score_reading("அருண்", NARRATION)
+    assert r.heard and r.words_read == 1

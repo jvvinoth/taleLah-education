@@ -201,6 +201,12 @@ class MediaAsset {
 /// F4 — a real approved scene for child-mode playback.
 class ApprovedScene {
   final int index;
+  /// Chapter name the way a storybook has one — the writer chose it for this
+  /// beat, so it is shown above the page instead of "Chapter 2".
+  final String title;
+  final String titleTargetLang;
+  /// The picture for this beat, chosen to match what happens here.
+  final String emoji;
   final String narration;
   final String narrationTargetLang;
   final String interactionType; // choice | speak | listen
@@ -209,6 +215,9 @@ class ApprovedScene {
 
   ApprovedScene({
     required this.index,
+    this.title = '',
+    this.titleTargetLang = '',
+    this.emoji = '',
     this.narration = '',
     this.narrationTargetLang = '',
     this.interactionType = 'listen',
@@ -220,6 +229,9 @@ class ApprovedScene {
     final interaction = json['interaction'] as Map<String, dynamic>? ?? {};
     return ApprovedScene(
       index: json['index'] as int? ?? 0,
+      title: json['title'] as String? ?? '',
+      titleTargetLang: json['title_target_lang'] as String? ?? '',
+      emoji: json['emoji'] as String? ?? '',
       narration: json['narration'] as String? ?? '',
       narrationTargetLang: json['narration_target_lang'] as String? ?? '',
       interactionType: interaction['type'] as String? ?? 'listen',
@@ -268,6 +280,9 @@ class ApprovedStory {
   final String targetPhrase;
   final List<String> targetWords;
   final List<VocabWord> vocabulary;
+  /// The chant that comes back every scene — the child joins in on it.
+  final String refrain;
+  final String refrainTargetLang;
   final List<MediaAsset> manifest;
 
   ApprovedStory({
@@ -286,6 +301,8 @@ class ApprovedStory {
     this.targetPhrase = '',
     this.targetWords = const [],
     this.vocabulary = const [],
+    this.refrain = '',
+    this.refrainTargetLang = '',
     this.manifest = const [],
   });
 
@@ -333,6 +350,8 @@ class ApprovedStory {
               ?.map((e) => VocabWord.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      refrain: story['refrain'] as String? ?? '',
+      refrainTargetLang: story['refrain_target_lang'] as String? ?? '',
       manifest: (media['manifest'] as List<dynamic>?)
               ?.map((e) => MediaAsset.fromJson(e as Map<String, dynamic>))
               .toList() ??

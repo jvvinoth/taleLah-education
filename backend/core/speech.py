@@ -22,6 +22,24 @@ def normalize(text: str, form: str = "NFC") -> str:
     return " ".join(text.split())
 
 
+def split_graphemes(text: str) -> list[str]:
+    """Split into user-perceived characters — Tamil syllables stay whole.
+
+    Combining marks (Mn) and spacing vowel signs (Mc) attach to the base
+    letter, so மீ is one unit, not ம + ீ. Latin/Chinese fall out as one
+    unit per character, which is what we want there too.
+    """
+    clusters: list[str] = []
+    for ch in unicodedata.normalize("NFC", text or ""):
+        if ch.isspace():
+            continue
+        if clusters and unicodedata.category(ch) in ("Mn", "Mc"):
+            clusters[-1] += ch
+        else:
+            clusters.append(ch)
+    return clusters
+
+
 def _bigrams(text: str) -> set[str]:
     s = text.replace(" ", "")
     if len(s) < 2:
@@ -122,6 +140,10 @@ class ReadingScore:
     score: float = 0.0
     heard: bool = False
     missed_words: list[str] = None  # type: ignore[assignment]
+    # Raw counts behind the score — lets the UI say "7 of 9 words" instead
+    # of showing a bare percentage to a parent.
+    words_total: int = 0
+    words_read: int = 0
 
     def __post_init__(self):
         if self.missed_words is None:
@@ -144,7 +166,7 @@ def score_reading(
     nnorm = normalize(narration, normalization)
     ntokens = [t for t in nnorm.split() if len(t) >= 2]
     if not tnorm or not ntokens:
-        return ReadingScore(heard=bool(tnorm))
+        return ReadingScore(heard=bool(tnorm), words_total=len(ntokens))
 
     hit = 0
     missed: list[str] = []
@@ -153,8 +175,16 @@ def score_reading(
             hit += 1
         else:
             missed.append(tok)
+    # Honest uncertainty: ASR transcribes a quiet mic as a stray syllable, and
+    # "you read 0 of 19 words" to a child who never spoke is a lie about them.
+    # A single cluster that matched nothing is noise, not a reading.
+    if hit == 0 and len(split_graphemes(tnorm)) <= 1:
+        return ReadingScore(heard=False, missed_words=missed,
+                            words_total=len(ntokens))
     return ReadingScore(
         score=round(hit / len(ntokens), 3),
         heard=True,
         missed_words=missed,
+        words_total=len(ntokens),
+        words_read=hit,
     )

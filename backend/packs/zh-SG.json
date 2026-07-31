@@ -134,7 +134,15 @@
       "读得真好！👏",
       "越读越棒！🎉"
     ],
-    "reading_practice": "我们一起说这个词：'{word}'"
+    "reading_practice": "我们一起说这个词：'{word}'",
+    "word_perfect": [
+      "'{word}' — 说得完全正确！🌟",
+      "'{word}' 说对了！👏",
+      "'{word}' — 太准了！🎉"
+    ],
+    "word_close": "很接近了！注意这个音：'{part}' — '{word}'。我们一起说！",
+    "word_retry": "我先说，你跟着说：'{word}' 💪",
+    "word_unclear": "我听不清楚哦！再大声说一次：'{word}'"
   },
   "family_copy": {
     "say_together": "一起说！ — Say it together!",

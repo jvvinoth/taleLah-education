@@ -31,6 +31,7 @@ from ...core.language_packs import pack_loader
 from ...core.orchestrator import AgentName, TraceEntry, orchestrator
 from ...core.persistence import persistence
 from ...core.speech import match_intent, score_reading
+from ...core.pronunciation import analyse_word
 from ...adapters.r2_storage import r2_storage
 from ...adapters.resend_provider import send_reset_email, send_verification_email
 from ...safety.gate import safety_gate
@@ -56,6 +57,7 @@ from ...schemas.api_schemas import (
     ResetPassword,
     SessionStart,
     SessionSummary,
+    SpeakRequest,
     SpeechFallbackChoice,
     StoryPackageApproval,
     StoryPackageDetail,
@@ -1769,12 +1771,29 @@ async def read_aloud_turn(
     # Pick the longest missed word: the meatiest thing to practise together.
     practice_word = ""
     practice_copy = ""
+    focus_part = ""
     if reading.heard and reading.missed_words and reading.score < 0.9:
         practice_word = max(reading.missed_words, key=len)
         if pack.child_copy.reading_practice:
             practice_copy = pack.child_copy.reading_practice.format(
                 word=practice_word
             )
+        # Cross-check that word against what was heard, down to the letters,
+        # so the child is pointed at the syllable rather than the whole word.
+        focus_part = analyse_word(
+            transcript, practice_word, normalization=pack.speech.normalization
+        ).focus_part
+
+    # Tiered verdict — what Mina says depends on how much was actually read,
+    # not on a coin flip over the same three praise lines.
+    if not reading.heard:
+        verdict = "unclear"
+    elif reading.score >= 0.9:
+        verdict = "fluent"
+    elif reading.score >= 0.5:
+        verdict = "most_of_it"
+    else:
+        verdict = "a_few_words"
 
     if reading.heard:
         session.speech_turn_completed = True
@@ -1784,21 +1803,158 @@ async def read_aloud_turn(
         session.story_package_id,
         "read_aloud",
         f"scene={scene_index} heard={reading.heard} score={reading.score} "
-        f"asr_ok={asr_ok} (raw audio discarded)",
+        f"verdict={verdict} asr_ok={asr_ok} (raw audio discarded)",
     )
 
     return {
         "session_id": session_id,
         "heard": reading.heard,
         "score": reading.score,
+        "verdict": verdict,
+        "words_total": reading.words_total,
+        "words_read": reading.words_read,
         "praise_copy": _pick(pack.child_copy.praise_reading, "🌟"),
         "practice_word": practice_word,
         "practice_copy": practice_copy,
+        "focus_part": focus_part,
         "encourage_copy": _pick(
             pack.child_copy.encourage_retry, "Let's try once more!"
         ),
         "audio_retained": False,
     }
+
+
+@router.post("/sessions/{session_id}/word-practice")
+async def word_practice_turn(
+    session_id: str,
+    audio: UploadFile = File(...),
+    word_index: int = Form(0),
+    adult_id: str = Depends(require_adult),
+):
+    """
+    ✨ Words to learn — the child repeats one word and Mina TUTORS.
+
+    Hear → analyse → cross-check against the letters of the word → answer
+    what was actually said. Never a stock "Super!": a perfect attempt is
+    named as perfect, a near miss names the exact syllable to fix, and a
+    very different attempt gets the word modelled again.
+
+    Honest-uncertainty rule: when ASR gives us nothing we say we could not
+    hear — we never tell a child they were wrong on evidence we don't have.
+    Raw transcript never returned; raw audio discarded (AC-07).
+    """
+    session = _require_session(adult_id, session_id)
+    pkg = orchestrator.get_package(session.story_package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    pack = pack_loader.get(pkg.language.locale)
+    if not pack:
+        raise HTTPException(422, f"No language pack for {pkg.language.locale}")
+    vocab = pkg.story.vocabulary
+    if not 0 <= word_index < len(vocab):
+        raise HTTPException(404, f"No vocabulary word {word_index} in this story")
+    target = vocab[word_index]
+    spoken = target.word_target_lang or target.word
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Audio clip too large (max 5 MB)")
+
+    transcript = ""
+    asr_ok = False
+    for cfg in (pack.providers.asr, pack.providers.asr_fallback):
+        if cfg is None or asr_ok or not audio_bytes:
+            continue
+        asr = _get_asr(cfg.provider)
+        if asr is None:
+            continue
+        try:
+            transcript = await asr.transcribe(audio_bytes, language=cfg.language)
+            asr_ok = True
+        except Exception as e:
+            logger.warning(f"[WordPractice] ASR {cfg.provider} failed: {e}")
+    del audio_bytes  # AC-07 — never stored
+
+    analysis = analyse_word(
+        transcript, spoken, normalization=pack.speech.normalization
+    )
+    copy = pack.child_copy
+
+    # One template per verdict — the child hears a different, specific answer
+    # depending on what they actually said.
+    if analysis.verdict == "perfect":
+        feedback = _pick(copy.word_perfect, "🌟").format(word=spoken)
+        next_action = "celebrate"
+    elif analysis.verdict == "close":
+        feedback = (copy.word_close or "").format(
+            word=spoken, part=analysis.focus_part or spoken
+        )
+        next_action = "practise_part"
+    elif analysis.verdict == "different":
+        feedback = (copy.word_retry or "").format(word=spoken)
+        next_action = "model_again"
+    else:
+        # Nothing audible (silence, or ASR outage) — not the child's fault.
+        feedback = (copy.word_unclear or "").format(word=spoken)
+        next_action = "model_again"
+
+    if analysis.verdict == "perfect":
+        session.speech_turn_completed = True
+        persistence.save("story_sessions", session_id, session)
+
+    _trace_edit(
+        session.story_package_id,
+        "word_practice",
+        f"word={word_index} verdict={analysis.verdict} score={analysis.score} "
+        f"asr_ok={asr_ok} (raw audio discarded)",
+    )
+
+    return {
+        "session_id": session_id,
+        "word_index": word_index,
+        "word": spoken,
+        "heard": analysis.heard,
+        "verdict": analysis.verdict,
+        "score": analysis.score,
+        # Both derived from the TARGET word, never from the transcript.
+        "focus_part": analysis.focus_part,
+        "got_parts": analysis.matched_parts,
+        "feedback_copy": feedback,
+        "next_action": next_action,
+        "audio_retained": False,
+    }
+
+
+@router.post("/sessions/{session_id}/speak")
+async def speak_text(
+    session_id: str,
+    data: SpeakRequest,
+    adult_id: str = Depends(require_adult),
+):
+    """On-demand TTS in the story's voice — for feedback Mina composes live
+    (e.g. "the tricky bit is ன"), which cannot be pre-generated at approval.
+
+    Bounded on purpose: short text only, and the voice/pace come from the
+    pack, so a session can never synthesize arbitrary long content.
+    """
+    session = _require_session(adult_id, session_id)
+    pkg = orchestrator.get_package(session.story_package_id)
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
+    if fvd is None:
+        raise HTTPException(503, "Voice director unavailable")
+
+    chain = fvd._resolve_tts_chain(pkg.language.locale)
+    if not chain:
+        raise HTTPException(503, "No TTS provider configured for this locale")
+    try:
+        audio, _used = await fvd._synthesize_with(chain, data.text)
+    except Exception as e:
+        logger.warning(f"[Speak] TTS failed for session {session_id}: {e}")
+        raise HTTPException(502, "TTS failed")
+    media_type = "audio/wav" if audio[:4] == b"RIFF" else "audio/mpeg"
+    return Response(content=audio, media_type=media_type)
 
 
 # ── F10 · Memory consent + progress (AC-07, hard rule 6) ───────────────

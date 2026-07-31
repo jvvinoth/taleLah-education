@@ -139,21 +139,60 @@ class LanguageGuardianAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"[LanguageGuardian] Title translation failed: {e}")
 
-        # Translate scene narrations
+        # The hero's name, settled once. Left to each scene, a transliterated
+        # name comes back spelled differently every time.
+        if package.story.hero_name and not package.story.hero_name_target_lang:
+            try:
+                result = await self._translate(
+                    llm,
+                    f"Write this child's name in {language} script, the way it "
+                    f"would be said at home: {package.story.hero_name}",
+                    system,
+                    locale,
+                    language,
+                )
+                package.story.hero_name_target_lang = str(
+                    result.get("translated", "")
+                ).strip()
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Hero name translation failed: {e}")
+
+        # The refrain is the line the child chants along with, so it must be
+        # translated ONCE and then reused word for word in every scene.
+        if package.story.refrain and not package.story.refrain_target_lang:
+            try:
+                result = await self._translate(
+                    llm,
+                    f"Translate this sing-song line a child will chant along with. "
+                    f"Keep it short and easy to say: {package.story.refrain}",
+                    system,
+                    locale,
+                    language,
+                )
+                package.story.refrain_target_lang = result.get("translated", "")
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Refrain translation failed: {e}")
+
+        # Translate the scenes in order, each call carrying the story so far.
+        # One isolated call per scene cannot see the hero's name or the refrain
+        # it chose last time, so the home-language story drifts apart even when
+        # the English holds together.
+        try:
+            await self._translate_scenes(package, llm, system, locale, language)
+        except Exception as e:
+            logger.error(f"[LanguageGuardian] Scene translation failed: {e}")
+
+        # Chapter titles — nice to have, never a reason to block the story.
+        try:
+            await self._translate_scene_titles(package, llm, system, locale, language)
+        except Exception as e:
+            logger.error(f"[LanguageGuardian] Chapter titles failed: {e}")
+
+        # Any scene the pass could not render must still not reach a child as
+        # English — mark it so validation catches it and the parent regenerates.
         for scene in package.story.scenes:
             if scene.narration and not scene.narration_target_lang:
-                try:
-                    result = await self._translate(
-                        llm,
-                        f"Translate for a child to hear: {scene.narration}",
-                        system,
-                        locale,
-                        language,
-                    )
-                    scene.narration_target_lang = result.get("translated", scene.narration)
-                except Exception as e:
-                    logger.error(f"[LanguageGuardian] Scene translation failed: {e}")
-                    scene.narration_target_lang = f"[{language}: {scene.narration[:40]}]"
+                scene.narration_target_lang = f"[{language}: {scene.narration[:40]}]"
 
         # Translate target phrase if learning plan exists
         if package.learning_plan:
@@ -210,6 +249,108 @@ class LanguageGuardianAgent(BaseAgent):
 
         logger.info(f"[LanguageGuardian] {language} translation complete for all scenes")
 
+    async def _translate_scenes(
+        self, package: StoryPackage, llm, system: str, locale: str, language: str
+    ) -> None:
+        """Translate the scenes one at a time, in order, handing each call the
+        story so far: the hero's name as already spelled, the refrain word for
+        word, and how the previous scene ended. A small native-language model
+        renders one scene beautifully but cannot hold a whole story in a single
+        JSON answer — so the continuity is carried in, not asked for."""
+        scenes = [s for s in package.story.scenes if s.narration]
+        if not scenes:
+            return
+
+        story = package.story
+        refrain = story.refrain_target_lang or story.refrain
+        done = 0
+        for i, scene in enumerate(scenes):
+            if scene.narration_target_lang:
+                continue
+
+            lines = [f"This is scene {i + 1} of {len(scenes)} of one story for a "
+                     f"young child, told out loud by a grandmother."]
+            if story.hero_name and story.hero_name_target_lang:
+                lines.append(
+                    f"The child in the story is called {story.hero_name}. Write "
+                    f"that name as exactly {story.hero_name_target_lang} every "
+                    f"time it appears — never a different spelling."
+                )
+            if i > 0 and scenes[i - 1].narration_target_lang:
+                lines.append(
+                    f"The scene before it ended like this — keep the same voice, "
+                    f"and spell every name exactly the same way:\n"
+                    f"{scenes[i - 1].narration_target_lang}"
+                )
+            if story.refrain and story.refrain.lower() in scene.narration.lower():
+                lines.append(
+                    f"This scene repeats the story's chant. Write it with exactly "
+                    f"these words, unchanged: {refrain}"
+                )
+            lines.append(
+                "Keep the warm spoken voice, the sound words, and the questions "
+                "asked straight to the child. Keep it the same length — do not "
+                "shorten it to one sentence."
+            )
+            lines.append(f"Translate for a child to hear:\n{scene.narration}")
+
+            try:
+                result = await self._translate(
+                    llm, "\n\n".join(lines), system, locale, language
+                )
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Scene {i} translation failed: {e}")
+                continue
+
+            translated = str(result.get("translated", "")).strip()
+            if not translated or not self._in_native_script(translated, locale):
+                continue
+            scene.narration_target_lang = translated
+            done += 1
+
+        logger.info(
+            f"[LanguageGuardian] Scenes: {done}/{len(scenes)} rendered in {language}"
+        )
+
+    async def _translate_scene_titles(
+        self, package: StoryPackage, llm, system: str, locale: str, language: str
+    ) -> None:
+        """Chapter titles in one short batch call — they are a handful of words
+        each, so they fit in one answer where whole scenes do not. A title that
+        comes back romanised or empty is dropped; child mode then shows the
+        story's own title instead of bad script."""
+        scenes = [s for s in package.story.scenes if s.title and not s.title_target_lang]
+        if not scenes:
+            return
+        numbered = "\n".join(f"{i + 1}. {s.title}" for i, s in enumerate(scenes))
+        result = await llm.generate_json(
+            prompt=(
+                f"These are the chapter titles of one children's story called "
+                f"\"{package.story.title}\". Translate each one as a short, "
+                f"storybook chapter name a child could read:\n{numbered}\n\n"
+                'Respond with JSON: {"titles": ["<native script>", ...]} '
+                "in the same order."
+            ),
+            system=system,
+        )
+        titles = result.get("titles") or []
+        for scene, title in zip(scenes, titles):
+            text = str(title).strip()
+            if self._is_clean_label(text, locale):
+                scene.title_target_lang = text
+
+    def _is_clean_label(self, text: str, locale: str) -> bool:
+        """Stricter than _in_native_script, for the short things a child reads on
+        its own: a chapter title or a word chip. Narration may carry the English
+        words a Singapore family really says, but a two-word label that comes
+        back half-transliterated ("ஓத்த கீழ்லukku") is just broken text on
+        the page, so any Latin letter disqualifies it."""
+        if not text:
+            return False
+        if any("a" <= c.lower() <= "z" for c in text):
+            return False
+        return self._in_native_script(text, locale)
+
     def _in_native_script(self, text: str, locale: str) -> bool:
         """True when the text is mostly written in the locale's native script."""
         rng = NATIVE_SCRIPT_RANGES.get(locale.split("-")[0])
@@ -225,30 +366,39 @@ class LanguageGuardianAgent(BaseAgent):
         self, llm, prompt: str, system: str, locale: str, language: str
     ) -> dict:
         """One translation call with a script guard — if the model answers in
-        romanised/Latin text (unreadable for a child learning the script),
-        retry once demanding the native script."""
+        romanised/Latin text (unreadable for a child learning the script), or
+        does not answer usably at all, retry once. A scene that comes back empty
+        would otherwise reach the parent as a bracketed placeholder."""
         result = await llm.generate_json(prompt=prompt, system=system)
         translated = result.get("translated", "")
-        if translated and not self._in_native_script(translated, locale):
+        if not translated:
+            logger.warning("[LanguageGuardian] Empty translation, retrying")
+            note = (
+                "IMPORTANT: your previous answer could not be read. Reply with "
+                'ONLY the JSON object {"translated": ..., "romanised": ..., '
+                '"english_gloss": ...} and nothing else.'
+            )
+        elif not self._in_native_script(translated, locale):
             logger.warning(
                 f"[LanguageGuardian] Romanised output detected, retrying in script: "
                 f"{translated[:50]!r}"
             )
-            result = await llm.generate_json(
-                prompt=(
-                    f"{prompt}\n\nIMPORTANT: your previous answer used Latin letters. "
-                    f"Write \"translated\" ONLY in {language} script characters."
-                ),
-                system=system,
+            note = (
+                f"IMPORTANT: your previous answer used Latin letters. "
+                f'Write "translated" ONLY in {language} script characters.'
             )
-        return result
+        else:
+            return result
+        return await llm.generate_json(prompt=f"{prompt}\n\n{note}", system=system)
 
     async def _translate_vocabulary(
         self, llm, words: list[str], system: str, locale: str, language: str
     ) -> list[VocabWord]:
         """Translate the target words in one batch call → VocabWord list.
         Words that come back romanised or empty are dropped — a bad chip
-        teaches the child the wrong thing."""
+        teaches the child the wrong thing. The prompt stays deliberately short:
+        asked for the "everyday spoken form, not the dictionary form", the
+        native model returned தாழ்ச்சி (humiliation) for "clean"."""
         if not words:
             return []
         numbered = "\n".join(f"{i + 1}. {w}" for i, w in enumerate(words))
@@ -266,7 +416,7 @@ class LanguageGuardianAgent(BaseAgent):
             if not isinstance(item, dict):
                 continue
             translated = str(item.get("translated", "")).strip()
-            if not translated or not self._in_native_script(translated, locale):
+            if not self._is_clean_label(translated, locale):
                 continue
             vocab.append(VocabWord(
                 word=str(item.get("word", "")).strip() or words[i],
