@@ -32,6 +32,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   int _currentScene = 0;
   bool _sessionComplete = false;
 
+  // Staged reveal — each speak/choice scene shows the story first
+  // ('story'), then hands the stage to the interaction ('interact').
+  String _sceneStage = 'story';
+
   // F6 — bounded speech turn state (per scene). Hands-free 1-1 loop:
   // Mina narrates → listens (VAD ends the turn on silence — no stop
   // button) → thinks → answers → listens again.
@@ -254,6 +258,24 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   bool _isStoryScene(int index) =>
       _scenes[index].assetId?.startsWith('scene_') ?? false;
 
+  /// Staged scenes reveal their interaction only after the story is heard;
+  /// mission/handoff cards are already a single simple screen.
+  bool _isStaged(_DemoScene scene) =>
+      scene.interaction == 'speak' || scene.interaction == 'choice';
+
+  /// Hand the stage to the interaction — called when the narration ends or
+  /// the child taps "My turn!". No-op if the page has already turned.
+  void _revealInteraction(int index) {
+    if (!mounted || _sessionComplete || _currentScene != index) return;
+    if (!_isStaged(_scenes[index])) return;
+    if (_sceneStage != 'interact') {
+      setState(() {
+        _pageForward = true;
+        _sceneStage = 'interact';
+      });
+    }
+  }
+
   /// Backend scene index behind this card ('scene_N' → N); null for
   /// mission/handoff/demo cards.
   int? _storySceneIndex(int index) {
@@ -298,6 +320,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       // Half-duplex conversation: the mic opens when Mina stops talking —
       // in "I read" mode she hands the book over instead.
       player.onPlayerComplete.first.then((_) {
+        _revealInteraction(index);
         if (_iRead && _isStoryScene(index)) {
           _scheduleReading(index);
         } else {
@@ -375,6 +398,8 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     if (_currentScene != index) return;
     if (_scenes[index].interaction != 'speak') return;
     if (_speechPhase != 'idle' && _speechPhase != 'retry') return;
+    // The mic UI lives in the interact stage — bring it on before opening.
+    _revealInteraction(index);
     _startListening();
   }
 
@@ -653,6 +678,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   void _resetSpeechState() {
     _autoListenTimer?.cancel();
     _liveMic.cancel();
+    _sceneStage = 'story';
     _speechPhase = 'idle';
     _attempt = 1;
     _feedbackCopy = '';
@@ -916,14 +942,6 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     }
   }
 
-  /// F8 — parent-skip from the hold gate: the mission never blocks anyone.
-  void _skipMission() {
-    setState(() => _missionDone = true);
-    if (_scenes[_currentScene].interaction == 'mission') {
-      _nextScene();
-    }
-  }
-
   // ── F8 · room mission (AC-05) ───────────────────────────
 
   Future<void> _startMission(_DemoScene scene) async {
@@ -1163,48 +1181,12 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
                     );
                   },
                   child: SingleChildScrollView(
-                    key: ValueKey(_currentScene),
+                    // Stage flips ride the same page-turn transition.
+                    key: ValueKey('$_currentScene-$_sceneStage'),
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 16),
-                        _storyPage(scene),
-                        if (_currentScene == 0 && _scenes.length > 1) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            'Swipe to turn the page  👉',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: TColors.inkFaint.withValues(alpha: 0.9),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-
-                        // Who reads? — Mina narrates, or the child reads and
-                        // Mina listens (story scenes only). How fast she tells
-                        // it is a grown-up's dial, so it stays tucked away.
-                        if (_isStoryScene(_currentScene)) ...[
-                          _readModeToggle(scene),
-                          const SizedBox(height: 8),
-                          if (_showPace) ...[
-                            _paceToggle(scene),
-                            const SizedBox(height: 8),
-                          ],
-                          const SizedBox(height: 4),
-                        ] else
-                          const SizedBox(height: 10),
-
-                        // F7 — Mina reacts to the child (8 states)
-                        Mina(state: _minaState(scene), size: 56),
-                        const SizedBox(height: 14),
-
-                        // Interaction area
-                        _buildInteraction(scene),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
+                    child: _isStaged(scene) && _sceneStage == 'interact'
+                        ? _interactStageView(scene)
+                        : _storyStageView(scene),
                   ),
                 ),
               ),
@@ -1455,6 +1437,219 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
 
   /// One page of the storybook: a large illustration on top, the words below —
   /// clean and simple so a child looks at the picture first.
+  /// Stage 1 — the story is the only hero: picture, words, narration
+  /// controls, and one "My turn!" door into the interaction. Mission and
+  /// handoff cards keep their single-screen layout here too.
+  Widget _storyStageView(_DemoScene scene) {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        _storyPage(scene),
+        if (_currentScene == 0 && _scenes.length > 1) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Swipe to turn the page  👉',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: TColors.inkFaint.withValues(alpha: 0.9),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+
+        // Who reads? — Mina narrates, or the child reads and Mina listens
+        // (story scenes only). How fast she tells it is a grown-up's dial,
+        // so it stays tucked away.
+        if (_isStoryScene(_currentScene)) ...[
+          _readModeToggle(scene),
+          const SizedBox(height: 8),
+          if (_showPace) ...[
+            _paceToggle(scene),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 4),
+        ] else
+          const SizedBox(height: 10),
+
+        if (_isStaged(scene))
+          _myTurnButton()
+        else ...[
+          // F7 — Mina reacts to the child (8 states)
+          Mina(state: _minaState(scene), size: 56),
+          const SizedBox(height: 14),
+          _buildInteraction(scene),
+        ],
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  /// Stage 2 — the interaction is the only hero; the story folds into a
+  /// recap strip the child can tap to read again.
+  Widget _interactStageView(_DemoScene scene) {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        _sceneRecapStrip(scene),
+        const SizedBox(height: 18),
+
+        // F7 — Mina reacts to the child (8 states)
+        Mina(state: _minaState(scene), size: 56),
+        const SizedBox(height: 14),
+
+        // Speak turns carry their own prompt copy; choices need it here.
+        if (scene.interaction == 'choice') ...[
+          Text(
+            scene.prompt,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: TColors.inkSoft,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 14),
+        ],
+        _buildInteraction(scene),
+
+        // ✨ Words to learn — below the interaction, never crammed into
+        // the story card.
+        if (_isStoryScene(_currentScene) &&
+            (_story?.vocabulary.isNotEmpty ?? false))
+          _vocabSection(scene),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  /// The one door from hearing the story into doing something with it.
+  Widget _myTurnButton() {
+    return GestureDetector(
+      onTap: () => _revealInteraction(_currentScene),
+      child: Container(
+        height: 58,
+        padding: const EdgeInsets.symmetric(horizontal: 30),
+        decoration: BoxDecoration(
+          color: TColors.coral,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: TShadows.glowCoral,
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'My turn!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            SizedBox(width: 8),
+            Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The story, folded away but never gone — tap to read it again.
+  Widget _sceneRecapStrip(_DemoScene scene) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _pageForward = false;
+          _sceneStage = 'story';
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: TShadows.card,
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: scene.illustrationUrl.isNotEmpty
+                    ? Image.network(
+                        scene.illustrationUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _recapEmoji(scene),
+                      )
+                    : _recapEmoji(scene),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    scene.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: scene.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Tap to read again',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: TColors.inkFaint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_hasAudio(scene))
+              GestureDetector(
+                onTap: () => _playScene(_currentScene),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: TColors.mist,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.replay_rounded,
+                    color: scene.accent,
+                    size: 22,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _recapEmoji(_DemoScene scene) => Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              scene.accent.withValues(alpha: 0.25),
+              scene.accent.withValues(alpha: 0.08),
+            ],
+          ),
+        ),
+        child: Center(
+          child: Text(scene.emoji, style: const TextStyle(fontSize: 24)),
+        ),
+      );
+
   Widget _storyPage(_DemoScene scene) {
     final story = _story;
     final refrain = story == null
@@ -1850,27 +2045,14 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       case 'choice':
         final opts = adventureOptionsFrom(scene.choices ?? const []);
         if (opts.isEmpty) return const SizedBox.shrink();
-        return Column(
-          children: [
-            Text(
-              scene.prompt,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: TColors.inkSoft,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 14),
-            // Tinder-style pick-your-adventure deck. Tapping a card (or Pick)
-            // always chooses — swiping is a delight, never a gate. Any pick
-            // advances, matching the previous button-list behaviour.
-            AdventureDeck(
-              key: ValueKey('deck_$_currentScene'),
-              options: opts,
-              onPick: (_) => _nextScene(),
-            ),
-          ],
+        // Tinder-style pick-your-adventure deck. Tapping a card (or Pick)
+        // always chooses — swiping is a delight, never a gate. Any pick
+        // advances, matching the previous button-list behaviour. The prompt
+        // copy lives in _interactStageView.
+        return AdventureDeck(
+          key: ValueKey('deck_$_currentScene'),
+          options: opts,
+          onPick: (_) => _nextScene(),
         );
 
       case 'mission':

@@ -60,9 +60,24 @@ void main() {
     await tester.pumpWidget(childMode());
     await tester.pumpAndSettle();
 
-    // Scene 1 · speak — back button present, no inputs.
+    // Scene 1 · speak — staged reveal: the story card is the only hero,
+    // one "My turn!" door into the interaction. No inputs anywhere.
     expectChildModePurity(tester);
     expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+    expect(find.text('My turn!'), findsOneWidget);
+
+    // "My turn!" reveals the interaction stage — still pure.
+    await tester.ensureVisible(find.text('My turn!'));
+    await tester.tap(find.text('My turn!'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tap to read again'), findsOneWidget);
+    expectChildModePurity(tester);
+
+    // The recap strip folds the story back open.
+    await tester.tap(find.text('Tap to read again'));
+    await tester.pumpAndSettle();
+    expect(find.text('My turn!'), findsOneWidget);
+    expectChildModePurity(tester);
 
     // System back shows confirm dialog, dismissing it stays on screen.
     await tester.binding.handlePopRoute();
@@ -72,9 +87,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ChildSessionScreen), findsOneWidget);
 
-    // Scene 2 · choice.
+    // Scene 2 · choice — story stage first, then the adventure deck.
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
+    expectChildModePurity(tester);
+    await tester.ensureVisible(find.text('My turn!'));
+    await tester.tap(find.text('My turn!'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pick this!'), findsOneWidget);
     expectChildModePurity(tester);
 
     // Scene 3 · speak.
