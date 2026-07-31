@@ -105,7 +105,7 @@ class DashScopeImageProvider(ImageProvider):
         self,
         api_key: str,
         base_url: str = SERVICES_BASE_URL,
-        model: str = "wanx-v2",
+        model: str = "wan2.1-t2i-turbo",
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -119,9 +119,13 @@ class DashScopeImageProvider(ImageProvider):
         size: str = "1280*1280",
     ) -> str:
         """Submit a text-to-image task, poll for completion, return the image URL."""
+        input_obj: dict = {"prompt": prompt}
+        if negative_prompt:
+            input_obj["negative_prompt"] = negative_prompt
+
         body = {
             "model": self.model,
-            "input": {"prompt": prompt},
+            "input": input_obj,
             "parameters": {
                 "size": size,
                 "n": 1,
@@ -129,8 +133,6 @@ class DashScopeImageProvider(ImageProvider):
                 "watermark": False,
             },
         }
-        if negative_prompt:
-            body["parameters"]["negative_prompt"] = negative_prompt
 
         # Submit the async task
         resp = await self._client.post(
