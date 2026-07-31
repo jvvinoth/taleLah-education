@@ -293,7 +293,11 @@ class AppState extends ChangeNotifier {
     required String locale,
     required String capturingStatus,
   }) async {
-    if (_activeProfile == null) return;
+    if (_activeProfile == null) {
+      debugPrint('[TL] _captureAndGenerate: _activeProfile is null, aborting');
+      return;
+    }
+    debugPrint('[TL] _captureAndGenerate: starting, profile=${_activeProfile!.id}, locale=$locale');
 
     _isGenerating = true;
     _progressPct = 0.0;
@@ -306,23 +310,33 @@ class AppState extends ChangeNotifier {
 
     try {
       // 1. Capture moment (text / voice / photo)
+      debugPrint('[TL] Step 1: Capturing moment...');
       final moment = await capture();
+      debugPrint('[TL] Step 1 done: moment_id=${moment.id}');
 
       _generationStatus = 'Starting generation...';
       notifyListeners();
 
       // 2. Start async generation
+      debugPrint('[TL] Step 2: Starting async generation...');
       final packageId = await api.generatePackageAsync(
         momentId: moment.id,
         locale: locale,
       );
+      debugPrint('[TL] Step 2 done: packageId=$packageId');
 
       // 3. Subscribe to SSE events
       _generationStatus = 'Streaming progress...';
       notifyListeners();
 
       var pipelineError = '';
-      await for (final event in api.streamPackageEvents(packageId)) {
+      await for (final event in api.streamPackageEvents(packageId).timeout(
+        const Duration(minutes: 5),
+        onTimeout: (sink) {
+          // Pipeline took too long — close the stream gracefully.
+          sink.close();
+        },
+      )) {
         _progressPct = event.progressPct;
         _currentAgent = event.agent;
 
@@ -365,6 +379,7 @@ class AppState extends ChangeNotifier {
       _pendingClarification = null;
       notifyListeners();
     } catch (e) {
+      debugPrint('[TL] _captureAndGenerate ERROR: $e');
       _isGenerating = false;
       _pendingClarification = null;
       _generationStatus = '';

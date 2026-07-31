@@ -150,7 +150,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   /// Detect generation completion and flash the bar green briefly.
   bool _wasGenerating = false;
   void _maybeFlashComplete(AppState app) {
-    if (_wasGenerating && !app.isGenerating && app.latestPackage != null) {
+    if (_wasGenerating && !app.isGenerating && app.captureError == null && app.latestPackage != null) {
       _justCompleted = true;
       _progressDismissed = false;
       Future.delayed(const Duration(seconds: 3), () {
@@ -1106,18 +1106,23 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   }
 
   void _startGeneration(AppState app) {
+    debugPrint('[TL] _startGeneration called, activeProfile=${app.activeProfile?.id}, isGenerating=${app.isGenerating}');
     final text = _textController.text.trim();
     if (text.isEmpty) {
+      debugPrint('[TL] text is empty, showing snackbar');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please describe the moment first')),
       );
       return;
     }
+    debugPrint('[TL] starting generation with text="$text", locale=$_selectedLocale');
     setState(() {
       _progressDismissed = false;
       _justCompleted = false;
     });
-    app.captureAndGenerate(text: text, locale: _selectedLocale);
+    app.captureAndGenerate(text: text, locale: _selectedLocale).catchError((e) {
+      debugPrint('[TL] captureAndGenerate unhandled error: $e');
+    });
     _textController.clear();
     FocusScope.of(context).unfocus();
   }
@@ -1314,12 +1319,17 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         _captureError('Photo too large — max 10 MB');
         return;
       }
+      setState(() {
+        _progressDismissed = false;
+        _justCompleted = false;
+      });
       await app.captureAndGeneratePhoto(
         imageBytes: bytes,
         contentType: picked.mimeType ?? 'image/jpeg',
         locale: _selectedLocale,
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[TL] _pickPhoto error: $e');
       _captureError('Could not read that photo — try typing instead');
     }
   }

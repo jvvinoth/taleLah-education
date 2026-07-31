@@ -292,14 +292,19 @@ class ApiClient {
     required String childProfileId,
     required String text,
   }) async {
-    final res = await _client.post(
-      Uri.parse('$baseUrl/moments'),
-      headers: _headers,
-      body: jsonEncode({
-        'child_profile_id': childProfileId,
-        'text': text,
-      }),
-    );
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/moments'),
+          headers: _headers,
+          body: jsonEncode({
+            'child_profile_id': childProfileId,
+            'text': text,
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, _detail(res, 'Moment capture failed'));
+    }
     return Moment.fromJson(jsonDecode(res.body));
   }
 
@@ -393,20 +398,32 @@ class ApiClient {
     required String momentId,
     String locale = 'ta-SG',
   }) async {
-    final res = await _client.post(
-      Uri.parse(
-          '$baseUrl/packages/generate-async?moment_id=$momentId&locale=$locale'),
-      headers: _headers,
-    );
+    final res = await _client
+        .post(
+          Uri.parse(
+              '$baseUrl/packages/generate-async?moment_id=$momentId&locale=$locale'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 30));
+    if (res.statusCode >= 400) {
+      throw ApiException(
+          res.statusCode, _detail(res, 'Story generation failed'));
+    }
     final data = jsonDecode(res.body);
     return data['package_id'] as String;
   }
 
   Future<Map<String, dynamic>> getPackageDetail(String packageId) async {
-    final res = await _client.get(
-      Uri.parse('$baseUrl/packages/$packageId'),
-      headers: _headers,
-    );
+    final res = await _client
+        .get(
+          Uri.parse('$baseUrl/packages/$packageId'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 30));
+    if (res.statusCode >= 400) {
+      throw ApiException(
+          res.statusCode, _detail(res, 'Could not load story details'));
+    }
     return jsonDecode(res.body);
   }
 
