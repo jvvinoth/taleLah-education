@@ -77,9 +77,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   // pre-generated manifest — they're synthesized on demand and played here.
   final AudioPlayer _livePlayer = AudioPlayer();
 
-  // F7 — hold-to-exit gate (AC-03): 3 s continuous press opens the parent gate
-  Timer? _holdTimer;
-  double _holdProgress = 0;
+  // Back navigation — single tap + confirm dialog
 
   // F8 — room mission milestone
   bool _missionDone = false;
@@ -126,7 +124,6 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   @override
   void dispose() {
     _autoListenTimer?.cancel();
-    _holdTimer?.cancel();
     _liveMic.dispose();
     _livePlayer.dispose();
     for (final p in _players.values) {
@@ -173,6 +170,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         accent: palette.accent,
         assetId: 'scene_${s.index}',
         expectedIntent: s.expectedIntent,
+        illustrationUrl: s.illustrationUrl,
       ));
     }
     if (story.mission.isNotEmpty || story.missionTargetLang.isNotEmpty) {
@@ -859,108 +857,62 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     }
   }
 
-  // ── F7 · child-mode lockdown (AC-03) ──────────────────────
+  // ── Back navigation · single tap + confirm dialog ───────────────
 
   /// Reduced motion — respect MediaQuery.disableAnimations.
   Duration _anim(int ms) => MediaQuery.of(context).disableAnimations
       ? Duration.zero
       : Duration(milliseconds: ms);
 
-  void _startHold(PointerDownEvent _) {
-    _holdTimer?.cancel();
-    _holdTimer = Timer.periodic(const Duration(milliseconds: 100), (t) {
-      if (!mounted) return;
-      setState(() => _holdProgress = (t.tick * 100) / 3000);
-      if (_holdProgress >= 1.0) {
-        t.cancel();
-        setState(() => _holdProgress = 0);
-        _openParentGate();
-      }
-    });
-  }
-
-  void _endHold([PointerEvent? _]) {
-    _holdTimer?.cancel();
-    if (_holdProgress > 0 && mounted) {
-      setState(() => _holdProgress = 0);
-    }
-  }
-
-  /// The gate a grown-up reaches after 3 s of holding — exit or skip.
-  void _openParentGate() {
-    showModalBottomSheet<void>(
+  /// Show a simple confirmation dialog when the user taps back.
+  Future<void> _confirmExit() async {
+    final leave = await showDialog<bool>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                '👋 Grown-ups only',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: TColors.ink,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              _gateAction(sheetCtx, Icons.logout_rounded,
-                  'Exit child mode', TColors.coral, () {
-                Navigator.pop(sheetCtx);
-                Navigator.pop(context);
-              }),
-              const SizedBox(height: 10),
-              _gateAction(sheetCtx, Icons.fast_forward_rounded,
-                  'Skip family mission', TColors.tealDeep, () {
-                Navigator.pop(sheetCtx);
-                _skipMission();
-              }),
-              const SizedBox(height: 10),
-              _gateAction(sheetCtx, Icons.auto_stories_rounded,
-                  'Stay in the story', TColors.ink,
-                  () => Navigator.pop(sheetCtx)),
-            ],
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          'Leave the story?',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: TColors.ink,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _gateAction(BuildContext sheetCtx, IconData icon, String label,
-      Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+        content: const Text(
+          'You can come back and finish later',
+          style: TextStyle(
+            fontSize: 14,
+            color: TColors.inkSoft,
+            fontWeight: FontWeight.w500,
+          ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              label,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Stay',
               style: TextStyle(
-                color: color,
-                fontSize: 15,
+                color: TColors.tealDeep,
                 fontWeight: FontWeight.w800,
               ),
             ),
-          ],
-        ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Leave',
+              style: TextStyle(
+                color: TColors.coral,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
+    if (leave == true && mounted) {
+      Navigator.pop(context);
+    }
   }
 
   /// F8 — parent-skip from the hold gate: the mission never blocks anyone.
@@ -1135,9 +1087,12 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       decoration: BoxDecoration(gradient: scene.gradient),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        // AC-03 — system back never exits child mode; only the hold gate does.
+        // System back triggers the confirm dialog.
         body: PopScope(
             canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) _confirmExit();
+            },
             child: Stack(children: [
               Column(
           children: [
@@ -1146,7 +1101,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               padding: EdgeInsets.fromLTRB(20, topPad + 12, 20, 0),
               child: Row(
                 children: [
-                  _holdExitButton(),
+                  _backButton(),
                   const SizedBox(width: 10),
                   // Where the child is in the book, told in pictures. Scales
                   // itself down rather than overflowing on a narrow phone.
@@ -1326,13 +1281,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     );
   }
 
-  /// F7 — press-and-hold 3 s to reach the parent gate. A quick tap does
-  /// nothing — the child cannot leave (or skip) by accident.
-  Widget _holdExitButton() {
-    return Listener(
-      onPointerDown: _startHold,
-      onPointerUp: _endHold,
-      onPointerCancel: _endHold,
+  /// Back button — single tap opens confirmation dialog.
+  Widget _backButton() {
+    return GestureDetector(
+      onTap: _confirmExit,
       child: Container(
         width: 56,
         height: 56,
@@ -1341,24 +1293,8 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
           shape: BoxShape.circle,
           boxShadow: TShadows.card,
         ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (_holdProgress > 0)
-              SizedBox(
-                width: 42,
-                height: 42,
-                child: CircularProgressIndicator(
-                  value: _holdProgress.clamp(0.0, 1.0),
-                  strokeWidth: 3.5,
-                  color: TColors.coral,
-                  backgroundColor: TColors.mist,
-                ),
-              ),
-            const Icon(Icons.lock_outline_rounded,
-                color: TColors.ink, size: 22),
-          ],
-        ),
+        child: const Icon(Icons.arrow_back_rounded,
+            color: TColors.ink, size: 22),
       ),
     );
   }
@@ -1516,9 +1452,8 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     );
   }
 
-  /// One page of the storybook: a picture panel on top, the words below —
-  /// the shape of a board book, so a child looks at the picture first and
-  /// the words second.
+  /// One page of the storybook: a large illustration on top, the words below —
+  /// clean and simple so a child looks at the picture first.
   Widget _storyPage(_DemoScene scene) {
     final story = _story;
     final refrain = story == null
@@ -1526,8 +1461,6 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
         : story.refrainTargetLang.isNotEmpty
             ? story.refrainTargetLang
             : story.refrain;
-    final gloss = scene.english;
-    final showGloss = gloss.isNotEmpty && gloss != scene.narration;
     final onStoryPage = _isStoryScene(_currentScene);
 
     return TCard(
@@ -1540,49 +1473,33 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
           children: [
             _picturePanel(scene),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
               child: Column(
                 children: [
                   Text(
                     scene.title,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 19,
+                      fontSize: 22,
                       fontWeight: FontWeight.w800,
                       height: 1.25,
                       color: scene.accent,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // The story itself, in the home language, set big enough
-                  // to follow along with a finger.
+                  const SizedBox(height: 10),
+                  // The story itself, in the home language, large and readable.
                   Text(
                     scene.narration,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      fontSize: 20,
-                      height: 1.65,
+                      fontSize: 24,
+                      height: 1.6,
                       fontWeight: FontWeight.w700,
                       color: TColors.ink,
                     ),
                   ),
-                  if (showGloss) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      gloss,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.45,
-                        fontWeight: FontWeight.w500,
-                        color: TColors.inkFaint,
-                      ),
-                    ),
-                  ],
                   if (onStoryPage && refrain.isNotEmpty)
                     _refrainBanner(scene, refrain),
-                  if (onStoryPage && (_story?.vocabulary.isNotEmpty ?? false))
-                    _vocabSection(scene),
                 ],
               ),
             ),
@@ -1592,35 +1509,25 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     );
   }
 
-  /// The picture half of the page — the chapter's own emoji, big, with the
-  /// chapter label tucked in one corner and the voice buttons in the other.
+  /// The picture half of the page — shows the Wanx illustration when available,
+  /// otherwise falls back to the emoji with decorative blobs.
   Widget _picturePanel(_DemoScene scene) {
+    final hasIllustration = scene.illustrationUrl.isNotEmpty;
     return SizedBox(
-      height: 190,
+      height: hasIllustration ? 240 : 190,
       width: double.infinity,
       child: Stack(
         children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    scene.accent.withValues(alpha: 0.18),
-                    scene.accent.withValues(alpha: 0.05),
-                  ],
-                ),
+          if (hasIllustration)
+            Positioned.fill(
+              child: Image.network(
+                scene.illustrationUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _emojiFallback(scene),
               ),
-            ),
-          ),
-          // Two soft blobs, so the picture sits in a scene and not on a
-          // flat wash of colour.
-          Positioned(right: -24, top: -28, child: _blob(110, scene.accent)),
-          Positioned(left: -20, bottom: -34, child: _blob(92, scene.accent)),
-          Center(
-            child: Text(scene.emoji, style: const TextStyle(fontSize: 88)),
-          ),
+            )
+          else
+            Positioned.fill(child: _emojiFallback(scene)),
           if (scene.kicker.isNotEmpty)
             Positioned(
               left: 14,
@@ -1645,6 +1552,31 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
             ),
           if (_hasAudio(scene))
             Positioned(right: 12, bottom: 12, child: _pageVoice(scene)),
+        ],
+      ),
+    );
+  }
+
+  /// Emoji-based picture fallback when no illustration URL is available.
+  Widget _emojiFallback(_DemoScene scene) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            scene.accent.withValues(alpha: 0.18),
+            scene.accent.withValues(alpha: 0.05),
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(right: -24, top: -28, child: _blob(110, scene.accent)),
+          Positioned(left: -20, bottom: -34, child: _blob(92, scene.accent)),
+          Center(
+            child: Text(scene.emoji, style: const TextStyle(fontSize: 88)),
+          ),
         ],
       ),
     );
@@ -2388,7 +2320,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
               // The hold-to-exit gate stays reachable at all times (AC-03).
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Row(children: [_holdExitButton()]),
+                child: Row(children: [_backButton()]),
               ),
               if (reading)
                 // The reading card — large storybook text the child reads
@@ -2617,7 +2549,10 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: PopScope(
-          canPop: false, // AC-03 — blocked during preload too
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _confirmExit();
+          },
           child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 48),
@@ -2671,10 +2606,12 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       decoration: const BoxDecoration(gradient: TGradients.page),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        // AC-03 — the goodbye screen still blocks system back; the big
-        // button below is the only exit.
+        // The goodbye screen — system back shows the same confirm dialog.
         body: PopScope(
           canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _confirmExit();
+          },
           child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -2950,6 +2887,7 @@ class _DemoScene {
   final Color accent;
   final String? assetId; // F4 — media manifest asset for this scene
   final String? expectedIntent; // F6 — the only intent the matcher may score
+  final String illustrationUrl; // Wanx-generated art for this scene
 
   const _DemoScene({
     required this.title,
@@ -2964,5 +2902,6 @@ class _DemoScene {
     required this.accent,
     this.assetId,
     this.expectedIntent,
+    this.illustrationUrl = '',
   });
 }

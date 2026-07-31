@@ -75,6 +75,22 @@ class VisionProvider(ABC):
         ...
 
 
+# ── Image Generation ────────────────────────────────────────────────────────
+
+class ImageProvider(ABC):
+    """Text-to-image generation provider."""
+
+    @abstractmethod
+    async def generate_image(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        size: str = "1280*1280",
+    ) -> str:
+        """Generate an image from a text prompt. Returns the image URL."""
+        ...
+
+
 # ── ASR ────────────────────────────────────────────────────────────────────
 
 class ASRProvider(ABC):

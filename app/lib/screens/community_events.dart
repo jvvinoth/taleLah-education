@@ -70,6 +70,21 @@ class _CommunityEventsScreenState extends State<CommunityEventsScreen> {
             children: [
               Row(
                 children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: TShadows.card,
+                      ),
+                      child: const Icon(Icons.arrow_back_rounded,
+                          color: TColors.ink, size: 20),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   const TMascot(size: 52),
                   const SizedBox(width: 14),
                   const Expanded(

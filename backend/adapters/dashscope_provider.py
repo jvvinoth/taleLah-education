@@ -12,12 +12,15 @@ from typing import Optional
 
 import httpx
 
-from .interfaces import LLMProvider, VisionProvider
+from .interfaces import ImageProvider, LLMProvider, VisionProvider
 
 logger = logging.getLogger(__name__)
 
 # International DashScope endpoint (OpenAI-compatible)
 DEFAULT_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+
+# DashScope services endpoint (for image generation, not OpenAI-compatible)
+SERVICES_BASE_URL = "https://dashscope-intl.aliyuncs.com/api/v1"
 
 
 class DashScopeLLMProvider(LLMProvider):
@@ -90,6 +93,91 @@ class DashScopeLLMProvider(LLMProvider):
         except json.JSONDecodeError:
             logger.warning("[DashScope LLM] Failed to parse JSON, returning raw")
             return {"raw": text}
+
+    async def close(self):
+        await self._client.aclose()
+
+
+class DashScopeImageProvider(ImageProvider):
+    """Wanx text-to-image generation via DashScope async task API."""
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = SERVICES_BASE_URL,
+        model: str = "wanx-v2",
+    ):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self._client = httpx.AsyncClient(timeout=120.0)
+
+    async def generate_image(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        size: str = "1280*1280",
+    ) -> str:
+        """Submit a text-to-image task, poll for completion, return the image URL."""
+        body = {
+            "model": self.model,
+            "input": {"prompt": prompt},
+            "parameters": {
+                "size": size,
+                "n": 1,
+                "prompt_extend": True,
+                "watermark": False,
+            },
+        }
+        if negative_prompt:
+            body["parameters"]["negative_prompt"] = negative_prompt
+
+        # Submit the async task
+        resp = await self._client.post(
+            f"{self.base_url}/services/aigc/text2image/image-synthesis",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "X-DashScope-Async": "enable",
+            },
+            json=body,
+        )
+        resp.raise_for_status()
+        task_data = resp.json()
+        task_id = task_data.get("output", {}).get("task_id")
+        if not task_id:
+            logger.error(f"[DashScope Image] No task_id in response: {task_data}")
+            return ""
+
+        logger.info(f"[DashScope Image] Submitted task {task_id} for model {self.model}")
+
+        # Poll for result (max ~90s: 30 attempts x 3s)
+        import asyncio
+        for _ in range(30):
+            await asyncio.sleep(3)
+            status_resp = await self._client.get(
+                f"{self.base_url}/tasks/{task_id}",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+            )
+            status_resp.raise_for_status()
+            status_data = status_resp.json()
+            task_status = status_data.get("output", {}).get("task_status", "")
+
+            if task_status == "SUCCEEDED":
+                results = status_data.get("output", {}).get("results", [])
+                if results:
+                    url = results[0].get("url", "")
+                    logger.info(f"[DashScope Image] Generated image: {url[:80]}...")
+                    return url
+                return ""
+            elif task_status in ("FAILED", "UNKNOWN"):
+                error_msg = status_data.get("output", {}).get("message", "Unknown error")
+                logger.error(f"[DashScope Image] Task failed: {error_msg}")
+                return ""
+            # PENDING or RUNNING — keep polling
+
+        logger.warning(f"[DashScope Image] Task {task_id} timed out after 90s")
+        return ""
 
     async def close(self):
         await self._client.aclose()

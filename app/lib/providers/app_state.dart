@@ -372,6 +372,7 @@ class AppState extends ChangeNotifier {
           title: detail['package']['story']?['title'] ?? '',
           sceneCount: (detail['package']['story']?['scenes'] as List?)?.length ?? 0,
           languageLocale: locale,
+          coverIllustrationUrl: _extractCoverIllustration(detail['package']),
         );
       }
 
@@ -390,6 +391,14 @@ class AppState extends ChangeNotifier {
           : 'Something went wrong — please try again';
       notifyListeners();
     }
+  }
+
+  /// Extract the first scene's illustration URL from a package JSON.
+  String _extractCoverIllustration(Map<String, dynamic>? pkg) {
+    if (pkg == null) return '';
+    final scenes = pkg['story']?['scenes'] as List?;
+    if (scenes == null || scenes.isEmpty) return '';
+    return (scenes[0] as Map<String, dynamic>?)?['illustration_url'] as String? ?? '';
   }
 
   // ── F3 · needs_clarification ──────────────────────────────────────

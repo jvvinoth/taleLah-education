@@ -1,8 +1,8 @@
 /// F7 — No-text-input purity assertion (AC-03).
 /// Walks the whole child-mode tree (story scenes → mission wait → handoff →
 /// goodbye) and asserts: zero text inputs / keyboards, no settings entry
-/// points, system back is blocked, the hold gate needs a real 3 s hold,
-/// and Mina's state machine stays a closed set of exactly 8 states.
+/// points, system back shows confirm dialog, and Mina's state machine stays
+/// a closed set of exactly 8 states.
 library;
 
 import 'package:flutter/material.dart';
@@ -60,12 +60,15 @@ void main() {
     await tester.pumpWidget(childMode());
     await tester.pumpAndSettle();
 
-    // Scene 1 · speak — LISTEN chip, no inputs.
+    // Scene 1 · speak — back button present, no inputs.
     expectChildModePurity(tester);
-    expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
 
-    // System back never exits child mode (AC-03).
+    // System back shows confirm dialog, dismissing it stays on screen.
     await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Leave the story?'), findsOneWidget);
+    await tester.tap(find.text('Stay'));
     await tester.pumpAndSettle();
     expect(find.byType(ChildSessionScreen), findsOneWidget);
 
@@ -123,37 +126,31 @@ void main() {
     expect(find.text('Great job today!'), findsOneWidget);
   });
 
-  testWidgets('exit gate needs a real 3 s hold — a quick tap does nothing',
+  testWidgets('back button tap shows confirm dialog — Stay dismisses it',
       (tester) async {
     usePhoneViewport(tester);
     await tester.pumpWidget(childMode());
     await tester.pumpAndSettle();
 
-    final lock = find.byIcon(Icons.lock_outline_rounded);
+    final back = find.byIcon(Icons.arrow_back_rounded);
 
-    // Hold target is child-sized (≥56 dp).
-    final holdSize = tester.getSize(
-      find.ancestor(of: lock, matching: find.byType(Container)).first,
+    // Back button is child-sized (≥44 dp).
+    final backSize = tester.getSize(
+      find.ancestor(of: back, matching: find.byType(GestureDetector)).first,
     );
-    expect(holdSize.width, greaterThanOrEqualTo(56));
-    expect(holdSize.height, greaterThanOrEqualTo(56));
+    expect(backSize.width, greaterThanOrEqualTo(44));
+    expect(backSize.height, greaterThanOrEqualTo(44));
 
-    // A quick tap must NOT open the parent gate.
-    await tester.tap(lock);
-    await tester.pump(const Duration(milliseconds: 600));
-    expect(find.text('👋 Grown-ups only'), findsNothing);
-
-    // A full 3 s hold opens it.
-    final gesture = await tester.startGesture(tester.getCenter(lock));
-    await tester.pump(const Duration(milliseconds: 3200));
-    await gesture.up();
+    // Tapping the back button opens a confirm dialog.
+    await tester.tap(back);
     await tester.pumpAndSettle();
-    expect(find.text('👋 Grown-ups only'), findsOneWidget);
-    expect(find.text('Exit child mode'), findsOneWidget);
-    expect(find.text('Skip family mission'), findsOneWidget);
+    expect(find.text('Leave the story?'), findsOneWidget);
+    expect(find.text('You can come back and finish later'), findsOneWidget);
+    expect(find.text('Stay'), findsOneWidget);
+    expect(find.text('Leave'), findsOneWidget);
 
-    // "Stay in the story" returns to the scene — still pure.
-    await tester.tap(find.text('Stay in the story'));
+    // "Stay" returns to the scene — still pure.
+    await tester.tap(find.text('Stay'));
     await tester.pumpAndSettle();
     expect(find.byType(ChildSessionScreen), findsOneWidget);
     expectChildModePurity(tester);

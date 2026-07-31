@@ -113,6 +113,8 @@ class StoryPackageSummary {
   final String validationLanguage;
   final String validationSafety;
   final String createdAt;
+  /// Cover illustration URL (first scene's Wanx illustration).
+  final String coverIllustrationUrl;
 
   StoryPackageSummary({
     required this.id,
@@ -128,6 +130,7 @@ class StoryPackageSummary {
     this.validationLanguage = 'pending',
     this.validationSafety = 'pending',
     this.createdAt = '',
+    this.coverIllustrationUrl = '',
   });
 
   factory StoryPackageSummary.fromJson(Map<String, dynamic> json) =>
@@ -212,6 +215,8 @@ class ApprovedScene {
   final String interactionType; // choice | speak | listen
   final List<String> options;
   final String expectedIntent;
+  /// Wanx-generated illustration URL (empty = use emoji fallback).
+  final String illustrationUrl;
 
   ApprovedScene({
     required this.index,
@@ -223,6 +228,7 @@ class ApprovedScene {
     this.interactionType = 'listen',
     this.options = const [],
     this.expectedIntent = '',
+    this.illustrationUrl = '',
   });
 
   factory ApprovedScene.fromJson(Map<String, dynamic> json) {
@@ -240,6 +246,7 @@ class ApprovedScene {
               .toList() ??
           [],
       expectedIntent: interaction['expected_intent'] as String? ?? '',
+      illustrationUrl: json['illustration_url'] as String? ?? '',
     );
   }
 }

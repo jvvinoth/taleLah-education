@@ -839,15 +839,29 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         children: [
           Row(
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: TGradients.mint,
-                  borderRadius: BorderRadius.circular(20),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: pkg.coverIllustrationUrl.isNotEmpty
+                      ? Image.network(
+                          pkg.coverIllustrationUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            decoration: const BoxDecoration(gradient: TGradients.mint),
+                            child: const Center(
+                              child: Text('📖', style: TextStyle(fontSize: 30)),
+                            ),
+                          ),
+                        )
+                      : Container(
+                          decoration: const BoxDecoration(gradient: TGradients.mint),
+                          child: const Center(
+                            child: Text('📖', style: TextStyle(fontSize: 30)),
+                          ),
+                        ),
                 ),
-                child:
-                    const Center(child: Text('📖', style: TextStyle(fontSize: 30))),
               ),
               const SizedBox(width: 14),
               Expanded(

@@ -67,7 +67,7 @@ async def startup():
     ensure_demo_adult()
 
     # ── Initialize providers ──────────────────────────────────────────────
-    from .adapters.dashscope_provider import DashScopeLLMProvider, DashScopeVisionProvider
+    from .adapters.dashscope_provider import DashScopeImageProvider, DashScopeLLMProvider, DashScopeVisionProvider
     from .adapters.sarvam_provider import SarvamLLMProvider, SarvamTTSProvider
     from .adapters.google_provider import GoogleTTSProvider
     from .adapters.cosyvoice_provider import CosyVoiceTTSProvider
@@ -155,6 +155,14 @@ async def startup():
     )
 
     orchestrator.register_agent(AgentName.GROWTH_COACH, GrowthCoachAgent(llm=llm))
+
+    # ── Image provider for scene illustrations (Wanx via DashScope) ───────
+    if settings.dashscope_api_key:
+        image_provider = DashScopeImageProvider(
+            api_key=settings.dashscope_api_key,
+        )
+        orchestrator.set_image_provider(image_provider)
+        logger.info("\u2705 DashScope Image provider initialized (Wanx)")
 
     # ── Community Scout — refresh language-based kids events on startup + daily
     from .agents.community_scout import CommunityScoutAgent

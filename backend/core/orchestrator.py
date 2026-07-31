@@ -101,6 +101,8 @@ class WorkflowOrchestrator:
         # Buffered events (replayed to late subscribers)
         self._event_buffers: dict[str, list[dict]] = {}
         self._done_packages: set[str] = set()
+        # Optional image provider for scene illustrations
+        self._image_provider: Any = None
 
     def subscribe(self, package_id: str) -> asyncio.Queue:
         """Subscribe to SSE events for a package. Returns an asyncio.Queue."""
@@ -154,6 +156,11 @@ class WorkflowOrchestrator:
         """Register an agent implementation."""
         self._agents[name] = agent
         logger.info(f"Registered agent: {name.value}")
+
+    def set_image_provider(self, provider: Any) -> None:
+        """Set the image generation provider for scene illustrations."""
+        self._image_provider = provider
+        logger.info("Image provider registered for scene illustrations")
 
     def create_package(
         self,
@@ -303,6 +310,23 @@ class WorkflowOrchestrator:
                 logger.error(f"Agent {agent_name.value} failed: {e}")
                 raise
 
+        # After all agents, generate scene illustrations (non-blocking: failures
+        # are logged but never block story delivery — emoji fallback stays).
+        if self._image_provider and pkg.story.scenes:
+            await self._emit(package_id, {
+                "type": "agent_started",
+                "agent": "illustration",
+                "progress_pct": 92.0,
+                "status": "generating_illustrations",
+            })
+            await self._generate_illustrations(pkg)
+            self.persist(pkg)
+            await self._emit(package_id, {
+                "type": "agent_completed",
+                "agent": "illustration",
+                "progress_pct": 98.0,
+            })
+
         # After all agents, run the safety gate so it ALWAYS executes on the
         # generation path (routes used to compute it and throw the result
         # away). This sets pkg.validation.safety, which the guards below and
@@ -334,6 +358,34 @@ class WorkflowOrchestrator:
             "status": StoryStatus.AWAITING_PARENT.value,
         })
         return pkg
+
+    async def _generate_illustrations(self, pkg: StoryPackage) -> None:
+        """Generate Wanx illustrations for each story scene (parallel, best-effort)."""
+        STYLE_PREFIX = (
+            "Children's book illustration, soft watercolor style, warm and friendly, "
+            "simple shapes, cheerful colors, no text or words in image: "
+        )
+        NEGATIVE = "text, words, letters, numbers, scary, violent, dark, realistic photo"
+
+        async def _gen_one(scene) -> None:
+            try:
+                # Use the English narration (shorter, clearer for the model)
+                summary = (scene.narration or "")[:200]
+                prompt = f"{STYLE_PREFIX}{summary}"
+                url = await self._image_provider.generate_image(
+                    prompt=prompt,
+                    negative_prompt=NEGATIVE,
+                    size="1280*1280",
+                )
+                if url:
+                    scene.illustration_url = url
+            except Exception as e:
+                logger.warning(f"[Illustration] Scene {scene.index} failed: {e}")
+
+        # Generate all scene illustrations in parallel
+        await asyncio.gather(*[_gen_one(s) for s in pkg.story.scenes])
+        count = sum(1 for s in pkg.story.scenes if s.illustration_url)
+        logger.info(f"[Illustration] Generated {count}/{len(pkg.story.scenes)} illustrations")
 
     async def resume_with_clarification(
         self, package_id: str, answer: str

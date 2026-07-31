@@ -105,8 +105,8 @@ class SceneInteraction(BaseModel):
 
 class StoryScene(BaseModel):
     index: int
-    # A chapter name the way a storybook has one — "The Slipper in the Bushes",
-    # not "Scene 2". Shown above the page in child mode.
+    # A chapter name the way a storybook has one — “The Slipper in the Bushes”,
+    # not “Scene 2”. Shown above the page in child mode.
     title: str = ""
     title_target_lang: str = ""
     # One picture for this beat of the story, chosen by the writer so it
@@ -115,6 +115,8 @@ class StoryScene(BaseModel):
     narration: str = ""
     narration_target_lang: str = ""
     visual_id: str = ""
+    # Wanx-generated illustration URL for child mode (square, watercolor style)
+    illustration_url: str = ""
     interaction: SceneInteraction = SceneInteraction(type=InteractionType.CHOICE)
 
 
