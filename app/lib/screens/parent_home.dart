@@ -22,7 +22,6 @@ class ParentHomeScreen extends StatefulWidget {
 
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
   final _textController = TextEditingController();
-  final _clarifyController = TextEditingController();
   String _selectedLocale = 'ta-SG';
   int _navIndex = 0;
 
@@ -31,6 +30,16 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   final LiveMic _momentMic = LiveMic();
   final Earcons _earcons = Earcons();
   bool _voiceOverlayVisible = false;
+
+  // Between the mic closing and the transcript arriving, this is true so
+  // the parent sees work happening rather than a dead text box.
+  bool _isTranscribing = false;
+
+  // The compact generation bar can be dismissed; it reappears when the
+  // story finishes or the parent taps "Create Story" again.
+  bool _progressDismissed = false;
+  // Brief green flash when generation completes.
+  bool _justCompleted = false;
 
   static const _locales = [
     ('ta-SG', 'தமிழ்', 'Tamil'),
@@ -43,7 +52,6 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     _momentMic.dispose();
     _earcons.dispose();
     _textController.dispose();
-    _clarifyController.dispose();
     super.dispose();
   }
 
@@ -52,6 +60,8 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     final app = context.watch<AppState>();
     final topPad = MediaQuery.of(context).padding.top;
     _maybeShowCaptureError(app);
+    _maybeShowClarification(app);
+    _maybeFlashComplete(app);
 
     return Container(
       decoration: const BoxDecoration(gradient: TGradients.page),
@@ -90,9 +100,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             // Hands-free listening overlay — full-screen so the parent
             // knows the mic is live; auto-dismisses when they pause.
             if (_voiceOverlayVisible) _buildVoiceCaptureOverlay(),
-            // Generation overlay — progress can never be scrolled out of
-            // sight; covers the whole screen incl. the bottom nav.
-            if (app.isGenerating) _buildGenerationOverlay(app),
+            // Compact generation progress bar — sits above the nav so the
+            // parent can still browse while the story is woven.
+            if ((app.isGenerating || _justCompleted) && !_progressDismissed)
+              _buildProgressBar(app),
           ],
         ),
       ),
@@ -136,31 +147,194 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     });
   }
 
-  /// Full-screen dimmed overlay shown while the story is being woven —
-  /// voice, photo and text all land here so the parent always sees
-  /// what's happening (and the F3 question when the pipeline pauses).
-  Widget _buildGenerationOverlay(AppState app) {
-    return Positioned.fill(
-      child: Container(
-        color: TColors.ink.withValues(alpha: 0.55),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (app.pendingClarification != null) ...[
-                    _buildClarificationCard(app),
-                    const SizedBox(height: 16),
-                  ],
-                  _buildProgress(app),
-                ],
+  /// Detect generation completion and flash the bar green briefly.
+  bool _wasGenerating = false;
+  void _maybeFlashComplete(AppState app) {
+    if (_wasGenerating && !app.isGenerating && app.latestPackage != null) {
+      _justCompleted = true;
+      _progressDismissed = false;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _justCompleted = false);
+      });
+    }
+    _wasGenerating = app.isGenerating;
+  }
+
+  /// Pop a dialog when the pipeline pauses for a clarification question.
+  bool _clarifyDialogShown = false;
+  void _maybeShowClarification(AppState app) {
+    if (app.pendingClarification != null && !_clarifyDialogShown) {
+      _clarifyDialogShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || app.pendingClarification == null) {
+          _clarifyDialogShown = false;
+          return;
+        }
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _ClarificationDialog(
+            question: app.pendingClarification!,
+            onAnswer: (answer) {
+              app.answerClarification(answer);
+              _clarifyDialogShown = false;
+            },
+          ),
+        );
+      });
+    } else if (app.pendingClarification == null) {
+      _clarifyDialogShown = false;
+    }
+  }
+
+  /// Compact progress bar positioned above the bottom nav.
+  Widget _buildProgressBar(AppState app) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    final activeIdx =
+        _agentSteps.indexWhere((s) => s.$1 == app.currentAgent);
+    final done = !app.isGenerating && _justCompleted;
+    return Positioned(
+      left: 20,
+      right: 20,
+      bottom: bottomPad + 90, // above the floating nav
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+        decoration: BoxDecoration(
+          color: done ? const Color(0xFF1F7B75) : TColors.ink,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: TShadows.soft,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        done
+                            ? 'Story ready!'
+                            : app.generationStatus.isNotEmpty
+                                ? app.generationStatus
+                                : 'Starting…',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (!done && app.progressPct > 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '${app.progressPct.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _progressDismissed = true),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.close_rounded,
+                      color: Colors.white.withValues(alpha: 0.6),
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (!done) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: app.progressPct > 0 ? app.progressPct / 100 : null,
+                  minHeight: 5,
+                  backgroundColor: Colors.white.withValues(alpha: 0.10),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(Color(0xFF2F9E97)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: List.generate(_agentSteps.length, (i) {
+                  final step = _agentSteps[i];
+                  final stepDone = activeIdx > i ||
+                      app.progressPct >= ((i + 1) / _agentSteps.length) * 100;
+                  final active = activeIdx == i && !stepDone;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: stepDone
+                          ? const Color(0xFF3BB8A9)
+                          : active
+                              ? const Color(0xFF2F9E97)
+                              : Colors.white.withValues(alpha: 0.10),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: stepDone
+                          ? const Icon(Icons.check_rounded,
+                              color: Colors.white, size: 12)
+                          : Text(step.$2,
+                              style: const TextStyle(fontSize: 10)),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Pulsing indicator between voice capture and transcript arrival.
+  Widget _buildTranscribingStrip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      decoration: BoxDecoration(
+        color: TColors.mist,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: TColors.teal.withValues(alpha: 0.8),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Listening to what you said…',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: TColors.tealDeep,
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -458,36 +632,39 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          // F5 — voice + photo capture chips
-          Row(
-            children: [
-              Expanded(
-                child: _captureChip(
-                  emoji: '🎙️',
-                  label: _voiceOverlayVisible ? 'Listening…' : 'Speak it',
-                  active: _voiceOverlayVisible,
-                  onTap: app.isGenerating || _voiceOverlayVisible
-                      ? null
-                      : app.activeProfile == null
-                          ? () => _promptCreateProfile(app)
-                          : () => _startVoiceCapture(app),
+          // F5 — voice + photo capture chips (hidden while transcribing)
+          if (_isTranscribing)
+            _buildTranscribingStrip()
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _captureChip(
+                    emoji: '🎙️',
+                    label: _voiceOverlayVisible ? 'Listening…' : 'Speak it',
+                    active: _voiceOverlayVisible,
+                    onTap: app.isGenerating || _voiceOverlayVisible
+                        ? null
+                        : app.activeProfile == null
+                            ? () => _promptCreateProfile(app)
+                            : () => _startVoiceCapture(app),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _captureChip(
-                  emoji: '📸',
-                  label: 'Snap it',
-                  active: false,
-                  onTap: app.isGenerating || _voiceOverlayVisible
-                      ? null
-                      : app.activeProfile == null
-                          ? () => _promptCreateProfile(app)
-                          : () => _pickPhoto(app),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _captureChip(
+                    emoji: '📸',
+                    label: 'Snap it',
+                    active: false,
+                    onTap: app.isGenerating || _voiceOverlayVisible
+                        ? null
+                        : app.activeProfile == null
+                            ? () => _promptCreateProfile(app)
+                            : () => _pickPhoto(app),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           const SizedBox(height: 16),
           // Language pills
           Row(
@@ -535,20 +712,24 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
           const SizedBox(height: 18),
           // CTA
           GestureDetector(
-            onTap: app.isGenerating
-                ? null
-                : app.activeProfile == null
-                    ? () => _promptCreateProfile(app)
+            onTap: app.activeProfile == null
+                ? () => _promptCreateProfile(app)
+                : app.isGenerating
+                    ? () => setState(() => _progressDismissed = false)
                     : () => _startGeneration(app),
             child: Container(
               height: 58,
               decoration: BoxDecoration(
-                gradient: app.activeProfile == null || app.isGenerating
+                gradient: app.activeProfile == null
                     ? null
-                    : TGradients.coral,
-                color: app.activeProfile == null || app.isGenerating
+                    : app.isGenerating
+                        ? null
+                        : TGradients.coral,
+                color: app.activeProfile == null
                     ? const Color(0xFFE8E4D8)
-                    : null,
+                    : app.isGenerating
+                        ? TColors.mist
+                        : null,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: app.activeProfile == null || app.isGenerating
                     ? null
@@ -558,20 +739,32 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.auto_fix_high_rounded,
-                      color: app.activeProfile == null || app.isGenerating
-                          ? TColors.inkFaint
-                          : Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      app.isGenerating ? 'Weaving magic…' : 'Create Story',
-                      style: TextStyle(
-                        color: app.activeProfile == null || app.isGenerating
+                    if (app.isGenerating)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: TColors.teal,
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.auto_fix_high_rounded,
+                        color: app.activeProfile == null
                             ? TColors.inkFaint
                             : Colors.white,
+                        size: 20,
+                      ),
+                    const SizedBox(width: 8),
+                    Text(
+                      app.isGenerating ? 'Creating…' : 'Create Story',
+                      style: TextStyle(
+                        color: app.activeProfile == null
+                            ? TColors.inkFaint
+                            : app.isGenerating
+                                ? TColors.teal
+                                : Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
                       ),
@@ -633,207 +826,6 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     ('language_guardian', '🗣️', 'Translating'),
     ('family_voice_director', '🎙️', 'Voicing'),
   ];
-
-  // ── F3 · Clarification card ────────────────────────────────────────
-
-  Widget _buildClarificationCard(AppState app) {
-    return TCard(
-      radius: 28,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: TColors.lemon,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text('🤔', style: TextStyle(fontSize: 20)),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'One quick question',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: TColors.ink,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            app.pendingClarification ?? '',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: TColors.inkSoft,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F3E9),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: TextField(
-              controller: _clarifyController,
-              maxLines: 2,
-              maxLength: 300,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(
-                hintText: 'Add the missing detail…',
-                hintStyle: TextStyle(
-                  color: TColors.inkFaint,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-                counterText: '',
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.all(14),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: GestureDetector(
-              onTap: () {
-                final answer = _clarifyController.text.trim();
-                if (answer.isEmpty) return;
-                app.answerClarification(answer);
-                _clarifyController.clear();
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: TColors.teal,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Text(
-                  'Send answer',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProgress(AppState app) {
-    final activeIdx =
-        _agentSteps.indexWhere((s) => s.$1 == app.currentAgent);
-    return TCard(
-      gradient: TGradients.night,
-      radius: 28,
-      padding: const EdgeInsets.all(24),
-      shadows: TShadows.glowTeal,
-      child: Column(
-        children: [
-          Text(
-            app.generationStatus,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            app.progressPct > 0
-                ? '${app.progressPct.toStringAsFixed(0)}% complete'
-                : 'Sending your moment…',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.55),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 20),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              // Indeterminate while uploading/transcribing (0%) — the bar
-              // must always visibly move so the parent knows work is live.
-              value: app.progressPct > 0 ? app.progressPct / 100 : null,
-              minHeight: 10,
-              backgroundColor: Colors.white.withValues(alpha: 0.10),
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF2F9E97)),
-            ),
-          ),
-          const SizedBox(height: 20),
-          // Agent step chips
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(_agentSteps.length, (i) {
-              final step = _agentSteps[i];
-              final done = activeIdx > i ||
-                  app.progressPct >= ((i + 1) / _agentSteps.length) * 100;
-              final active = activeIdx == i && !done;
-              return Column(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: done
-                          ? const Color(0xFF3BB8A9)
-                          : active
-                              ? const Color(0xFF2F9E97)
-                              : Colors.white.withValues(alpha: 0.08),
-                      shape: BoxShape.circle,
-                      boxShadow: active
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFF2F9E97)
-                                    .withValues(alpha: 0.5),
-                                blurRadius: 16,
-                              )
-                            ]
-                          : null,
-                    ),
-                    child: Center(
-                      child: done
-                          ? const Icon(Icons.check_rounded,
-                              color: Colors.white, size: 20)
-                          : Text(step.$2,
-                              style: const TextStyle(fontSize: 18)),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    step.$3,
-                    style: TextStyle(
-                      color: done || active
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.35),
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ── Package ready card ──────────────────────────────────────────────
 
@@ -1121,6 +1113,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       );
       return;
     }
+    setState(() {
+      _progressDismissed = false;
+      _justCompleted = false;
+    });
     app.captureAndGenerate(text: text, locale: _selectedLocale);
     _textController.clear();
     FocusScope.of(context).unfocus();
@@ -1162,9 +1158,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     _earcons.done(); // warm "got it" chime — plays after the mic has stopped
     // Transcribe (auto-detects English / Chinese / Tamil / Malay) and PREFILL
     // the text box — the parent reviews and edits, then taps Create.
+    setState(() => _isTranscribing = true);
     try {
       final transcript = await app.transcribeMoment(result.wavBytes);
       if (!mounted) return;
+      setState(() => _isTranscribing = false);
       if (transcript.trim().isEmpty) {
         _captureError("Couldn't catch that — try again or type it");
         return;
@@ -1179,6 +1177,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     } catch (e) {
       // Surface the real reason (server says empty-audio vs format vs API) so
       // we can see exactly what's wrong. Revert to a friendly message later.
+      if (mounted) setState(() => _isTranscribing = false);
       _captureError('Voice: ${e.toString()}');
     }
   }
@@ -1372,6 +1371,132 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AddChildScreen()),
+    );
+  }
+}
+
+// ── Clarification dialog (F3) ─────────────────────────────────────────────
+
+class _ClarificationDialog extends StatefulWidget {
+  final String question;
+  final ValueChanged<String> onAnswer;
+  const _ClarificationDialog({
+    required this.question,
+    required this.onAnswer,
+  });
+
+  @override
+  State<_ClarificationDialog> createState() => _ClarificationDialogState();
+}
+
+class _ClarificationDialogState extends State<_ClarificationDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: TColors.lemon,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Text('\ud83e\udd14', style: TextStyle(fontSize: 20)),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'One quick question',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: TColors.ink,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              widget.question,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: TColors.inkSoft,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F3E9),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: TextField(
+                controller: _controller,
+                maxLines: 2,
+                maxLength: 300,
+                autofocus: true,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                decoration: const InputDecoration(
+                  hintText: 'Add the missing detail\u2026',
+                  hintStyle: TextStyle(
+                    color: TColors.inkFaint,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  counterText: '',
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.all(14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: GestureDetector(
+                onTap: () {
+                  final answer = _controller.text.trim();
+                  if (answer.isEmpty) return;
+                  widget.onAnswer(answer);
+                  Navigator.of(context).pop();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: TColors.teal,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Text(
+                    'Send answer',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
