@@ -71,24 +71,44 @@ async def startup():
     from .adapters.sarvam_provider import SarvamLLMProvider, SarvamTTSProvider
     from .adapters.google_provider import GoogleTTSProvider
     from .adapters.cosyvoice_provider import CosyVoiceTTSProvider
+    from .adapters.gemini_provider import GeminiLLMProvider
 
     # LLM provider (Qwen-Max via DashScope)
-    llm: Optional[DashScopeLLMProvider] = None
+    qwen_llm: Optional[DashScopeLLMProvider] = None
     if settings.dashscope_api_key:
-        llm = DashScopeLLMProvider(
+        qwen_llm = DashScopeLLMProvider(
             api_key=settings.dashscope_api_key,
             base_url=settings.dashscope_base_url,
             model=settings.qwen_model,
         )
         logger.info(f"✅ DashScope LLM initialized (model: {settings.qwen_model})")
     else:
-        logger.warning("⚠️  No DashScope API key — agents will use fallback data")
+        logger.warning("⚠️  No DashScope API key — Qwen unavailable")
+
+    # ── Gemini LLM — becomes the default story generator when the key is set;
+    #    Qwen-Max stays registered as a fallback. (OpenAI-compatible endpoint.)
+    gemini_llm: Optional[GeminiLLMProvider] = None
+    if settings.gemini_api_key:
+        gemini_llm = GeminiLLMProvider(
+            api_key=settings.gemini_api_key,
+            base_url=settings.gemini_base_url,
+            model=settings.gemini_model,
+        )
+        logger.info(f"✅ Gemini LLM initialized (model: {settings.gemini_model})")
+
+    # The default LLM agents receive: prefer Gemini when configured, else Qwen.
+    llm = gemini_llm or qwen_llm
+    if not llm:
+        logger.warning("⚠️  No LLM configured — agents will use fallback data")
 
     # ── LLM registry — packs route story text per language (AC-08):
     #    ta-SG → Sarvam-105B for native Tamil quality; zh/ms → Qwen-Max.
+    #    Any pack can opt into Gemini via "llm": "gemini".
     llm_registry: dict[str, object] = {}
-    if llm:
-        llm_registry["qwen"] = llm
+    if gemini_llm:
+        llm_registry["gemini"] = gemini_llm
+    if qwen_llm:
+        llm_registry["qwen"] = qwen_llm
     if settings.sarvam_api_key:
         llm_registry["sarvam"] = SarvamLLMProvider(
             api_key=settings.sarvam_api_key, fallback=llm

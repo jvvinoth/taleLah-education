@@ -141,7 +141,8 @@ class BookOrchestrator:
             order.append(pref)
         if pack and getattr(pack.providers, "llm", None):
             order.append(pack.providers.llm)
-        order += ["qwen", "sarvam"]
+        # Fallback chain: Gemini (when configured) → Qwen → Sarvam.
+        order += ["gemini", "qwen", "sarvam"]
         for key in order:
             llm = self._llm_registry.get(key)
             if llm:
