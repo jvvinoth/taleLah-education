@@ -32,12 +32,21 @@ class Settings(BaseSettings):
     qwen_model: str = "qwen-max"
     qwen_vl_model: str = "qwen-vl-max"
 
-    # New book engine: which LLM authors the book (qwen = best instruction-
-    # following, sarvam = most native Tamil). Flip via BOOK_AUTHOR_LLM to A/B.
-    book_author_llm: str = "qwen"
+    # New book engine: which LLM authors the book (gemini = best instruction-
+    # following + strong multilingual; qwen = original; sarvam = most native
+    # Tamil). Flip via BOOK_AUTHOR_LLM to A/B. Empty → fallback chain picks
+    # the first available registered LLM (Gemini → Qwen → Sarvam).
+    book_author_llm: str = ""
     # DashScope text-to-image model. Try "wan2.2-t2i-plus" or "qwen-image"
     # for higher quality; override via IMAGE_MODEL without touching code.
     image_model: str = "wan2.1-t2i-turbo"
+
+    # Google Gemini — LLM for story generation (OpenAI-compatible endpoint).
+    # When GEMINI_API_KEY is set, Gemini becomes the default story LLM and
+    # Qwen-Max stays as a fallback. Packs can also route to it via "llm": "gemini".
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_model: str = "gemini-2.5-flash"
 
     # Sarvam AI — Tamil speech
     sarvam_api_key: str = ""

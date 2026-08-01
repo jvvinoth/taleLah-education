@@ -23,6 +23,7 @@ from backend.core.config import settings  # noqa: E402
 settings.database_url = ""
 # Force every agent/provider onto its offline fallback path.
 settings.dashscope_api_key = ""
+settings.gemini_api_key = ""
 settings.sarvam_api_key = ""
 settings.google_application_credentials = ""
 settings.elevenlabs_api_key = ""

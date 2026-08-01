@@ -18,6 +18,7 @@ class ProviderType(str, Enum):
     QWEN = "qwen"
     SARVAM = "sarvam"
     GOOGLE = "google"
+    GEMINI = "gemini"
     COSYVOICE = "cosyvoice"
     ELEVENLABS = "elevenlabs"
     MOCK = "mock"
