@@ -165,9 +165,10 @@ async def startup():
     if settings.dashscope_api_key:
         image_provider = DashScopeImageProvider(
             api_key=settings.dashscope_api_key,
+            model=settings.image_model,
         )
         orchestrator.set_image_provider(image_provider)
-        logger.info("\u2705 DashScope Image provider initialized (Wanx)")
+        logger.info("\u2705 Image provider initialized (%s)", settings.image_model)
 
     # ── Community Scout — refresh language-based kids events on startup + daily
     from .agents.community_scout import CommunityScoutAgent

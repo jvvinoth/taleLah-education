@@ -20,6 +20,7 @@ import hashlib
 import logging
 from typing import Any
 
+from .config import settings
 from .language_packs import pack_loader
 from .orchestrator import orchestrator
 from ..safety.gate import safety_gate
@@ -46,35 +47,49 @@ book_art_direction: dict[str, dict] = {}
 
 
 def _system_prompt(language: str) -> str:
-    return f"""You are a beloved children's author writing a short picture book in {language},
-in the warm, simple style of the best Singapore mother-tongue storybooks.
+    return f"""You are a wonderful children's picture-book author AND a gentle teacher,
+writing in {language} in the warm, simple style of the best Singapore
+mother-tongue storybooks — one clear idea per page, a friendly recurring
+character, always true and kind.
 
-WRITE THE STORY IN {language}. This is the child's own language — write it
-natively and beautifully, the way a loving grandparent speaks it at home, never
-a stiff textbook translation. Also give a plain ENGLISH gloss for the parent.
+STEP 1 — UNDERSTAND WHAT THE PARENT ACTUALLY ASKED FOR. It is ONE of two kinds:
+  (A) A TOPIC to bring to life — e.g. "explain how frogs live", "teach about the
+      moon", "a story about brushing teeth". Then TRULY TEACH that topic: weave
+      the REAL, correct, age-simple facts into a warm little story, and keep the
+      SUBJECT the star of EVERY page. (For a frog: it lives by the water, starts
+      as a tiny egg, becomes a wriggly tadpole, grows legs, swims and hops,
+      catches insects with its long sticky tongue, and says "croak".) Never
+      invent false facts. Never wander into unrelated drama.
+  (B) A real MOMENT the child lived — e.g. "Arjun built an MRT from blocks".
+      Then tell a cosy little story that begins right there in that real moment.
+  If it is not clearly a lived moment, treat it as a TOPIC and teach it warmly.
 
-THE BOOK
-- Exactly 4 pages. ONE simple idea per page. 1-3 short, warm sentences a young
-  child can follow. Never a wall of text.
-- ONE hero with ONE name, the SAME on every page. Begin inside the real thing
-  the child did today.
-- A gentle arc: cosy start -> a small wobble (no danger, nothing scary) -> the
-  child helps by speaking -> a warm ending that circles back to the start.
-- A short sing-song REFRAIN, 4-8 words, that comes back word-for-word so the
-  child can join in.
-- Warm and kind. Show feelings, do not name them. Nothing weird, sad-without-
-  comfort, violent or frightening.
-- At home in Singapore (void deck, wet market, MRT, amma's kitchen) — natural,
-  never a checklist.
+Whatever the parent asked for MUST be the heart of the book. Do not replace it
+with a generic template.
 
-FOR THE PICTURES (used later — be concrete and CONSISTENT)
-- Describe the hero's look ONCE in detail (animal or child, colours, one
-  signature item) so every page can show the SAME character.
+STEP 2 — WRITE THE BOOK IN {language} (with a plain ENGLISH gloss for the parent):
+- Exactly 4 pages. ONE simple idea per page, 1-3 short warm sentences. Never a
+  wall of text. Write it natively and beautifully — a loving grandparent's
+  voice, never a stiff textbook translation.
+- ONE friendly character with ONE name, the SAME on every page, who carries the
+  child through the topic (a little frog for the frog book, and so on).
+- Let the SHAPE follow the CONTENT. A topic book unfolds naturally: what it is ->
+  how it lives / how it works -> what it does -> a warm "isn't that wonderful".
+  Do NOT force a scary problem or a rescue if the topic has none.
+- Be TRUE and kind. Nothing false, weird, frightening, or sad-without-comfort.
+- At home in Singapore where it fits naturally; never a checklist.
+- A short sing-song refrain is lovely IF it fits the topic — optional, not forced.
+
+STEP 3 — THE SPEAKING GOAL:
+- Pick 3-5 everyday words FROM THE TOPIC the child will say out loud on one page
+  (for a frog: water, jump, tadpole...).
+
+STEP 4 — FOR THE PICTURES (be concrete and CONSISTENT):
+- Describe the character's look ONCE in detail (kind, colours, one signature
+  feature) so every page can show the SAME character.
 - Give ONE art-style line (e.g. "soft warm watercolour, rounded shapes, cheerful").
-- For each page, one short description of what to draw.
-
-THE LANGUAGE GOAL
-- Choose 3-5 everyday target words the child will SAY OUT LOUD on the speak page.
+- For each page, one short description of what to draw — matching what THAT page
+  actually says.
 
 Respond with JSON ONLY, no markdown, no explanation:
 {{
@@ -117,11 +132,21 @@ class BookOrchestrator:
 
     def _resolve_llm(self, locale: str):
         pack = pack_loader.get(locale)
-        provider_key = "qwen"
+        # The Book Author needs strong instruction-following (respect the topic,
+        # weave real facts), so we prefer the configured model (default Qwen-Max)
+        # over the pack's native LLM. Flip BOOK_AUTHOR_LLM=sarvam to A/B.
+        order: list[str] = []
+        pref = (settings.book_author_llm or "").strip().lower()
+        if pref:
+            order.append(pref)
         if pack and getattr(pack.providers, "llm", None):
-            provider_key = pack.providers.llm
-        llm = self._llm_registry.get(provider_key) or self._llm_registry.get("qwen")
-        return pack, llm, provider_key
+            order.append(pack.providers.llm)
+        order += ["qwen", "sarvam"]
+        for key in order:
+            llm = self._llm_registry.get(key)
+            if llm:
+                return pack, llm, key
+        return pack, None, ""
 
     async def run_generation(self, package_id: str) -> StoryPackage:
         pkg = self._classic.get_package(package_id)
@@ -149,11 +174,12 @@ class BookOrchestrator:
         try:
             blueprint = await llm.generate_json(
                 prompt=(
-                    f"This really happened to the child today:\n{pkg.moment_text}\n\n"
-                    f"Begin the book right there, in that real moment. Write all 4 pages "
-                    f"in {language} (with an English gloss), warm and simple, one idea a "
-                    f"page, one hero, one refrain. Choose the target words the child will "
-                    f"say out loud on the speak page."
+                    f'The parent asked for:\n"{pkg.moment_text}"\n\n'
+                    f"Decide whether this is a TOPIC to teach or a real MOMENT the "
+                    f"child lived, then write the 4-page book accordingly — in "
+                    f"{language} with an English gloss. Keep the subject the heart of "
+                    f"every page, warm, simple and TRUE. Choose the target words from "
+                    f"the topic for the child to say out loud."
                 ),
                 system=_system_prompt(language),
             )

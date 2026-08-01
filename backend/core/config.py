@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     qwen_model: str = "qwen-max"
     qwen_vl_model: str = "qwen-vl-max"
 
+    # New book engine: which LLM authors the book (qwen = best instruction-
+    # following, sarvam = most native Tamil). Flip via BOOK_AUTHOR_LLM to A/B.
+    book_author_llm: str = "qwen"
+    # DashScope text-to-image model. Try "wan2.2-t2i-plus" or "qwen-image"
+    # for higher quality; override via IMAGE_MODEL without touching code.
+    image_model: str = "wan2.1-t2i-turbo"
+
     # Sarvam AI — Tamil speech
     sarvam_api_key: str = ""
 
