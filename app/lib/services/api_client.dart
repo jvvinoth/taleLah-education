@@ -397,11 +397,12 @@ class ApiClient {
   Future<String> generatePackageAsync({
     required String momentId,
     String locale = 'ta-SG',
+    String engine = 'classic',
   }) async {
     final res = await _client
         .post(
           Uri.parse(
-              '$baseUrl/packages/generate-async?moment_id=$momentId&locale=$locale'),
+              '$baseUrl/packages/generate-async?moment_id=$momentId&locale=$locale&engine=$engine'),
           headers: _headers,
         )
         .timeout(const Duration(seconds: 30));

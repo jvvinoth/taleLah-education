@@ -117,21 +117,33 @@ class DashScopeImageProvider(ImageProvider):
         prompt: str,
         negative_prompt: str = "",
         size: str = "1280*1280",
+        seed: int | None = None,
+        prompt_extend: bool = True,
     ) -> str:
-        """Submit a text-to-image task, poll for completion, return the image URL."""
+        """Submit a text-to-image task, poll for completion, return the image URL.
+
+        `seed` (fixed across a book) + `prompt_extend=False` keep a recurring
+        character consistent from page to page — prompt_extend rewrites each
+        prompt independently, which is what makes free per-scene art drift.
+        Classic passes neither, so its behaviour is unchanged.
+        """
         input_obj: dict = {"prompt": prompt}
         if negative_prompt:
             input_obj["negative_prompt"] = negative_prompt
 
+        params: dict = {
+            "size": size,
+            "n": 1,
+            "prompt_extend": prompt_extend,
+            "watermark": False,
+        }
+        if seed is not None:
+            params["seed"] = seed
+
         body = {
             "model": self.model,
             "input": input_obj,
-            "parameters": {
-                "size": size,
-                "n": 1,
-                "prompt_extend": True,
-                "watermark": False,
-            },
+            "parameters": params,
         }
 
         # Submit the async task

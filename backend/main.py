@@ -156,6 +156,11 @@ async def startup():
 
     orchestrator.register_agent(AgentName.GROWTH_COACH, GrowthCoachAgent(llm=llm))
 
+    # ── New book-first engine — same per-language LLMs, different flow ─────
+    from .core.book_orchestrator import book_orchestrator
+    book_orchestrator.set_llm_registry(llm_registry)
+    logger.info("✅ Book engine wired (New flow)")
+
     # ── Image provider for scene illustrations (Wanx via DashScope) ───────
     if settings.dashscope_api_key:
         image_provider = DashScopeImageProvider(

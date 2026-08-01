@@ -30,6 +30,8 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   final LiveMic _momentMic = LiveMic();
   final Earcons _earcons = Earcons();
   bool _voiceOverlayVisible = false;
+  // Sprint 0 — story engine: 'classic' (untouched) or 'new' (book-first beta).
+  String _selectedEngine = 'classic';
 
   // Between the mic closing and the transcript arriving, this is true so
   // the parent sees work happening rather than a dead text box.
@@ -709,6 +711,8 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
               );
             }).toList(),
           ),
+          const SizedBox(height: 14),
+          _engineToggle(),
           const SizedBox(height: 18),
           // CTA
           GestureDetector(
@@ -1119,6 +1123,65 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     }
   }
 
+  /// Sprint 0 — Classic vs New (beta) story engine. New routes to the
+  /// book-first flow; Classic is unchanged. Lets us A/B and demo before/after.
+  Widget _engineToggle() {
+    Widget opt(String value, String label, String sub) {
+      final on = _selectedEngine == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => _selectedEngine = value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            decoration: BoxDecoration(
+              color: on ? TColors.teal : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: on ? Colors.white : TColors.inkSoft,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  sub,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: on
+                        ? Colors.white.withValues(alpha: 0.7)
+                        : TColors.inkFaint,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFEADD),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          opt('classic', 'Classic', "today's flow"),
+          opt('new', 'New ✨', 'book-first (beta)'),
+        ],
+      ),
+    );
+  }
+
   void _startGeneration(AppState app) {
     debugPrint('[TL] _startGeneration called, activeProfile=${app.activeProfile?.id}, isGenerating=${app.isGenerating}');
     final text = _textController.text.trim();
@@ -1134,7 +1197,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       _progressDismissed = false;
       _justCompleted = false;
     });
-    app.captureAndGenerate(text: text, locale: _selectedLocale).catchError((e) {
+    app
+        .captureAndGenerate(
+            text: text, locale: _selectedLocale, engine: _selectedEngine)
+        .catchError((e) {
       debugPrint('[TL] captureAndGenerate unhandled error: $e');
     });
     _textController.clear();
@@ -1341,6 +1407,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         imageBytes: bytes,
         contentType: picked.mimeType ?? 'image/jpeg',
         locale: _selectedLocale,
+        engine: _selectedEngine,
       );
     } catch (e) {
       debugPrint('[TL] _pickPhoto error: $e');

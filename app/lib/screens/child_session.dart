@@ -41,6 +41,7 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
   // button) → thinks → answers → listens again.
   final LiveMic _liveMic = LiveMic();
   Timer? _autoListenTimer;
+  Timer? _artPollTimer;
   // idle|listening|processing|nudge|celebrate|retry|fallback
   String _speechPhase = 'idle';
   int _attempt = 1;
@@ -124,11 +125,44 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
       });
     }
     _preloadAudio(app);
+    _pollForIllustrations(app);
+  }
+
+  /// New-engine illustrations are drawn in the background after approval, so
+  /// if any story page is still on its emoji fallback, poll for the finished
+  /// art and swap it in as it lands. Stops once every page has a picture (or
+  /// after ~40s). No-ops for Classic, where art is already present.
+  void _pollForIllustrations(AppState app) {
+    bool anyMissing() {
+      for (var i = 0; i < _scenes.length; i++) {
+        if (_isStoryScene(i) && _scenes[i].illustrationUrl.isEmpty) return true;
+      }
+      return false;
+    }
+
+    if (!anyMissing()) return;
+    var attempts = 0;
+    _artPollTimer?.cancel();
+    _artPollTimer = Timer.periodic(const Duration(seconds: 4), (t) async {
+      attempts++;
+      if (!mounted || attempts > 10 || !anyMissing()) {
+        t.cancel();
+        return;
+      }
+      final updated = await app.refreshApprovedStoryArt();
+      if (updated && mounted) {
+        setState(() {
+          _story = app.approvedStory;
+          _scenes = _buildScenes();
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _autoListenTimer?.cancel();
+    _artPollTimer?.cancel();
     _liveMic.dispose();
     _livePlayer.dispose();
     for (final p in _players.values) {

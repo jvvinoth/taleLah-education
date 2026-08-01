@@ -239,9 +239,11 @@ class AppState extends ChangeNotifier {
   Future<void> captureAndGenerate({
     required String text,
     String locale = 'ta-SG',
+    String engine = 'classic',
   }) async {
     await _captureAndGenerate(
       locale: locale,
+      engine: engine,
       capturingStatus: 'Capturing moment...',
       capture: () => api.captureMoment(
         childProfileId: _activeProfile!.id,
@@ -276,9 +278,11 @@ class AppState extends ChangeNotifier {
     required List<int> imageBytes,
     String contentType = 'image/jpeg',
     String locale = 'ta-SG',
+    String engine = 'classic',
   }) async {
     await _captureAndGenerate(
       locale: locale,
+      engine: engine,
       capturingStatus: 'Looking at your photo…',
       capture: () => api.captureMomentPhoto(
         childProfileId: _activeProfile!.id,
@@ -292,6 +296,7 @@ class AppState extends ChangeNotifier {
     required Future<Moment> Function() capture,
     required String locale,
     required String capturingStatus,
+    String engine = 'classic',
   }) async {
     if (_activeProfile == null) {
       debugPrint('[TL] _captureAndGenerate: _activeProfile is null, aborting');
@@ -322,6 +327,7 @@ class AppState extends ChangeNotifier {
       final packageId = await api.generatePackageAsync(
         momentId: moment.id,
         locale: locale,
+        engine: engine,
       );
       debugPrint('[TL] Step 2 done: packageId=$packageId');
 
@@ -511,6 +517,33 @@ class AppState extends ChangeNotifier {
       debugPrint('Approved story load failed: $e');
       return false;
     }
+  }
+
+  /// Re-pull the current story and update [approvedStory] if new scene
+  /// illustrations have arrived. New-engine art is generated in the background
+  /// after approval, so the child screen polls this until the pages fill in.
+  /// Returns true when more illustrations are ready than before.
+  Future<bool> refreshApprovedStoryArt() async {
+    final story = _approvedStory;
+    if (story == null) return false;
+    try {
+      final detail = await api.getPackageDetail(story.packageId);
+      final pkg = detail['package'] as Map<String, dynamic>?;
+      if (pkg == null) return false;
+      final before =
+          story.scenes.where((s) => s.illustrationUrl.isNotEmpty).length;
+      final refreshed = ApprovedStory.fromPackageJson(pkg);
+      final after =
+          refreshed.scenes.where((s) => s.illustrationUrl.isNotEmpty).length;
+      if (after > before) {
+        _approvedStory = refreshed;
+        notifyListeners();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Art refresh failed: $e');
+    }
+    return false;
   }
 
   // ── F6 · Child session ──────────────────────────────────────────

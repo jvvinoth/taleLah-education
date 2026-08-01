@@ -29,6 +29,7 @@ from jose import jwt as jose_jwt
 from ...core.config import settings
 from ...core.language_packs import pack_loader
 from ...core.orchestrator import AgentName, TraceEntry, orchestrator
+from ...core.book_orchestrator import book_orchestrator
 from ...core.persistence import persistence
 from ...core.speech import match_intent, score_reading
 from ...core.pronunciation import analyse_word
@@ -954,9 +955,20 @@ async def list_packages(
     return [StoryPackageResponse.from_package(p) for p in pkgs]
 
 
+# Sprint 0 — which story engine produced each package (classic | new).
+_pkg_engine: dict[str, str] = {}
+
+
+def _engine_for(package_id: str) -> str:
+    return _pkg_engine.get(package_id, "classic")
+
+
 @router.post("/packages/generate", response_model=StoryPackageResponse)
 async def generate_package(
-    moment_id: str, locale: str = "ta-SG", adult_id: str = Depends(require_adult)
+    moment_id: str,
+    locale: str = "ta-SG",
+    engine: str = "classic",
+    adult_id: str = Depends(require_adult),
 ):
     moment = _moments.get(moment_id)
     if not moment:
@@ -974,15 +986,18 @@ async def generate_package(
         moment_id=moment_id,
         locale=locale,
     )
+    _pkg_engine[pkg.id] = engine
 
     # Seed the raw moment text for Agent 1 (Moment Lens extracts facts — F3)
     pkg.moment_text = moment.parent_text
 
-    # Run the generation pipeline (Agents 1-5). The orchestrator now runs the
-    # safety gate and raises if the story is unsafe — surface that as a 422
-    # (content problem) rather than a generic 500 (pipeline crash).
+    # Run the generation pipeline. New engine routes to the book-first flow;
+    # classic is the untouched default. Either raises on an unsafe story.
     try:
-        pkg = await orchestrator.run_generation(pkg.id)
+        if engine == "new":
+            pkg = await book_orchestrator.run_generation(pkg.id)
+        else:
+            pkg = await orchestrator.run_generation(pkg.id)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except Exception as e:
@@ -995,12 +1010,14 @@ async def generate_package(
 async def generate_package_async(
     moment_id: str,
     locale: str = "ta-SG",
+    engine: str = "classic",
     background_tasks: BackgroundTasks = None,
     adult_id: str = Depends(require_adult),
 ):
     """
     Start story generation in the background.
     Returns package_id immediately; subscribe to /packages/{id}/stream for SSE events.
+    `engine`: "classic" (default, untouched) or "new" (book-first flow).
     """
     moment = _moments.get(moment_id)
     if not moment:
@@ -1016,6 +1033,7 @@ async def generate_package_async(
         moment_id=moment_id,
         locale=locale,
     )
+    _pkg_engine[pkg.id] = engine
 
     pkg.moment_text = moment.parent_text
 
@@ -1023,7 +1041,10 @@ async def generate_package_async(
         # run_generation runs the safety gate and raises on a block; the SSE
         # stream surfaces that error event to the parent app.
         try:
-            await orchestrator.run_generation(pkg.id)
+            if engine == "new":
+                await book_orchestrator.run_generation(pkg.id)
+            else:
+                await orchestrator.run_generation(pkg.id)
         except Exception as e:
             await orchestrator._emit(pkg.id, {"type": "error", "error": str(e)})
 
@@ -1033,6 +1054,7 @@ async def generate_package_async(
         "package_id": pkg.id,
         "stream_url": f"/api/v1/packages/{pkg.id}/stream",
         "status": "generating",
+        "engine": engine,
     }
 
 
