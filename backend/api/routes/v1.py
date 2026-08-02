@@ -935,6 +935,20 @@ async def capture_moment_photo(
     ]
     parent_text = ". ".join(t.rstrip(".") for t in fact_texts[:5])
 
+    # The observer prompt looks for what a CHILD did, so a photo with no child
+    # activity in it (a selfie, a landscape, a screenshot) comes back with no
+    # facts at all. Saving that as an empty moment used to push the failure
+    # downstream, where the safety gate rejected it with the baffling "Empty
+    # moment text". Catch it here and say something the parent can act on.
+    if not parent_text.strip():
+        logger.info("[MomentPhoto] no child activity found (%s)", note)
+        raise HTTPException(
+            422,
+            "I couldn't see what your child was doing in that photo. Try a "
+            "picture of something they made, drew or played with — or just "
+            "type what happened.",
+        )
+
     moment_id = f"moment_{uuid.uuid4().hex[:12]}"
     moment = Moment(
         id=moment_id,
@@ -2237,4 +2251,15 @@ async def health():
                    "language_guardian", "family_voice_director", "growth_coach"],
         "language_packs": pack_loader.available_locales(),
         "persistence": "neon" if persistence.enabled else "memory-only",
+        # iPhone photos are HEIC; without this the server can't open them.
+        "photo_heic_support": _heic_support(),
     }
+
+
+def _heic_support() -> bool:
+    try:
+        from ...adapters.image_prep import _heif_ready
+
+        return _heif_ready()
+    except Exception:  # noqa: BLE001
+        return False

@@ -350,6 +350,23 @@ class AppState extends ChangeNotifier {
           _generationStatus = _agentLabel(event.agent);
         } else if (event.type == 'agent_completed') {
           _generationStatus = '${_agentLabel(event.agent)} done';
+        } else if (event.type == 'outline_ready') {
+          // The new engine has the book's shape within a few seconds. Hand the
+          // story to the parent NOW — the review screen polls each page in as
+          // it is written — instead of holding them on a spinner until the
+          // whole book is finished.
+          await _publishEarly(packageId, locale);
+          _generationStatus = 'Writing the pages…';
+        } else if (event.type == 'card_ready' || event.type == 'card_failed') {
+          final ready = event.cardsReady;
+          final total = event.cardsTotal;
+          if (total > 0) {
+            _generationStatus = 'Page $ready of $total ready';
+          }
+        } else if (event.type == 'engine_fallback') {
+          // The book engine bailed to the slow classic path — say so instead
+          // of letting it look like the new flow is just slow.
+          debugPrint('[TL] engine fell back to classic: ${event.error}');
         } else if (event.type == 'needs_clarification') {
           // F3 — pipeline paused for one parent answer
           _pendingClarification = event.question;
@@ -396,6 +413,32 @@ class AppState extends ChangeNotifier {
           ? e.detail
           : 'Something went wrong — please try again';
       notifyListeners();
+    }
+  }
+
+  /// Publish the story as soon as its outline exists, so the parent can open
+  /// it while the remaining pages are still being written server-side.
+  Future<void> _publishEarly(String packageId, String locale) async {
+    if (_latestPackage?.id == packageId) return; // already surfaced
+    try {
+      final detail = await api.getPackageDetail(packageId);
+      final pkg = detail['package'] as Map<String, dynamic>?;
+      if (pkg == null) return;
+      _latestPackage = StoryPackageSummary(
+        id: packageId,
+        status: pkg['status'] ?? 'awaiting_parent',
+        childProfileId: _activeProfile?.id ?? '',
+        title: pkg['story']?['title'] ?? '',
+        sceneCount: (pkg['story']?['scenes'] as List?)?.length ?? 0,
+        languageLocale: locale,
+        coverIllustrationUrl: _extractCoverIllustration(pkg),
+      );
+      // Unblock the home screen — the story card appears and the review
+      // screen takes over showing pages as they land.
+      _isGenerating = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[TL] early publish failed: $e');
     }
   }
 

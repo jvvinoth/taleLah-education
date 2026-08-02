@@ -383,6 +383,9 @@ class SSEEvent {
   final String error;
   final String packageId;
   final String question; // F3 — needs_clarification
+  // Book engine: how many pages are written so far, out of how many.
+  final int cardsReady;
+  final int cardsTotal;
 
   SSEEvent({
     required this.type,
@@ -392,6 +395,8 @@ class SSEEvent {
     this.error = '',
     this.packageId = '',
     this.question = '',
+    this.cardsReady = 0,
+    this.cardsTotal = 0,
   });
 
   factory SSEEvent.fromJson(Map<String, dynamic> json) => SSEEvent(
@@ -402,5 +407,7 @@ class SSEEvent {
         error: json['error'] as String? ?? '',
         packageId: json['package_id'] as String? ?? '',
         question: json['question'] as String? ?? '',
+        cardsReady: (json['ready_cards'] as num?)?.toInt() ?? 0,
+        cardsTotal: (json['total_cards'] as num?)?.toInt() ?? 0,
       );
 }
