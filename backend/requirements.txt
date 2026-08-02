@@ -13,3 +13,8 @@ aiofiles>=23.2.0
 dashscope>=1.26.0
 google-cloud-texttospeech>=2.36.0
 google-cloud-speech>=2.39.0
+# Photo capture: downscale + transcode before the vision call. pillow-heif adds
+# iPhone HEIC support. Both are optional at runtime — image_prep falls back to
+# passing the original bytes through if they are missing.
+Pillow>=10.3.0
+pillow-heif>=0.16.0

@@ -25,6 +25,7 @@ from .language_packs import pack_loader
 from .orchestrator import orchestrator
 from ..safety.gate import safety_gate
 from ..schemas.story_package import (
+    CardStatus,
     ConfidenceLevel,
     EndingPrompt,
     FamilyHandoff,
@@ -107,16 +108,100 @@ Respond with JSON ONLY, no markdown, no explanation:
     {{"index":2,"title":"native","title_en":"en","emoji":"🔍","text":"...","text_en":"...","visual":"...","interaction":"speak","expected_intent":"predicts_next"}},
     {{"index":3,"title":"native","title_en":"en","emoji":"🌈","text":"...","text_en":"...","visual":"...","interaction":"choice","options":["native opt1","native opt2"]}}
   ],
-  "room_mission_en":"english mission (stay indoors, nothing sharp/hot)",
-  "room_mission":"native mission",
+  "room_mission_en":"english: a calm indoor activity with a grown-up — look, count, find a colour, or point to a picture",
+  "room_mission":"native mission (calm, indoors)",
   "family_handoff_en":"english: a simple follow-up an adult asks",
   "ending_prompt_en":"english: a simple favourite-part question"
 }}"""
 
 
+def _outline_prompt(language: str) -> str:
+    """Stage 1 — the shape of the whole book, fast. No page prose yet, so this
+    call returns in a few seconds and the parent can be shown the book
+    immediately instead of a five-minute spinner."""
+    return f"""You are a wonderful children's picture-book author AND a gentle teacher
+planning a short picture book for a 4-8 year old, to be written in {language}.
+
+FIRST decide what the parent asked for:
+  (A) A TOPIC to teach — "explain how frogs live", "about the moon". Then plan a
+      book that TRULY TEACHES it with real, correct, age-simple facts, and keep
+      the SUBJECT the star of every page.
+  (B) A real MOMENT the child lived — then plan a cosy story that starts there.
+If it is not clearly a lived moment, treat it as a TOPIC.
+
+Plan 4 to 6 pages. Each page gets ONE clear beat — a single sentence in ENGLISH
+saying what happens on that page. Let the shape follow the content: a topic book
+unfolds naturally (what it is -> how it lives -> what it does -> a warm close).
+Do NOT invent a scary problem or a rescue if the topic has none.
+
+Also settle now, once, so every page stays consistent:
+- ONE friendly character with ONE name who carries the child through.
+- That character's detailed look (for the illustrator).
+- ONE art-style line.
+- 3-5 everyday target words FROM THE TOPIC the child will say out loud.
+
+Respond with JSON ONLY, no markdown:
+{{
+  "title": "native {language} title", "title_en": "english title",
+  "hero_name": "the character's name",
+  "hero_visual": "detailed consistent look of the character",
+  "art_style": "one art-style line",
+  "target_words": ["native word 1","native word 2","native word 3"],
+  "speaking_goal": "english: the one speaking goal",
+  "target_phrase": "native: the whole phrase to work towards",
+  "beats": [
+    {{"index":0,"beat":"english: what happens on page 1","title_en":"short chapter name","emoji":"🏡"}},
+    {{"index":1,"beat":"...","title_en":"...","emoji":"🌱"}},
+    {{"index":2,"beat":"...","title_en":"...","emoji":"🔍"}},
+    {{"index":3,"beat":"...","title_en":"...","emoji":"🌈"}}
+  ],
+  "room_mission_en":"english: a calm indoor activity with a grown-up — look, count, find a colour, or point to a picture",
+  "room_mission":"native mission (calm, indoors)",
+  "family_handoff_en":"english: a simple follow-up an adult asks",
+  "ending_prompt_en":"english: a simple favourite-part question"
+}}"""
+
+
+def _expand_prompt(language: str) -> str:
+    """Stage 2 — write ONE page. Small and fast, so pages can stream in."""
+    return f"""You are writing ONE page of a children's picture book in {language}.
+
+Write it natively and beautifully — a loving grandparent's voice, never a stiff
+textbook translation. 1-3 short warm sentences, ONE simple idea, true and kind.
+Nothing false, weird, frightening or sad-without-comfort. Use the SAME character
+name given to you. Stay on the book's subject.
+
+Respond with JSON ONLY, no markdown:
+{{
+  "title": "native short chapter name",
+  "text": "native {language} text, 1-3 short sentences",
+  "text_en": "plain english gloss for the parent",
+  "visual": "one short description of what to draw on this page",
+  "interaction": "choice" or "speak",
+  "options": ["native opt1","native opt2"],
+  "expected_intent": "says_target"
+}}
+Use "choice" with 2-3 short native options for the first and last page, and
+"speak" for a middle page where the child says a target word out loud."""
+
+
 def _first_emoji(raw: str) -> str:
     picture = "".join(ch for ch in (raw or "").strip() if not ch.isascii())
     return picture[:3]
+
+
+# A calm indoor default used whenever the model's mission trips the keyword
+# gate. The gate can't tell "don't touch anything sharp" (safe advice) from
+# "use a sharp knife" — both contain "sharp" — so a safety caveat in the
+# mission would block the whole book. We keep good missions, swap risky ones.
+_SAFE_MISSION_EN = "Look at the pictures together and point to your favourite one."
+
+
+def _safe_mission(en: str, native: str) -> tuple[str, str]:
+    en = (en or "").strip()
+    if not en or not safety_gate.check_mission_safety(en).passed:
+        return _SAFE_MISSION_EN, ""
+    return en, (native or "").strip()
 
 
 class BookOrchestrator:
@@ -163,7 +248,15 @@ class BookOrchestrator:
         })
 
         if llm is None:
-            logger.warning("[BookEngine] no LLM available — falling back to classic")
+            logger.error(
+                "[BookEngine] NO LLM REGISTERED — falling back to the slow "
+                "classic pipeline. Check your API keys."
+            )
+            await self._classic._emit(package_id, {
+                "type": "engine_fallback",
+                "engine": "classic",
+                "reason": "no LLM provider registered",
+            })
             return await self._classic.run_generation(package_id)
 
         await self._classic._emit(package_id, {
@@ -171,22 +264,35 @@ class BookOrchestrator:
             "progress_pct": 15.0, "status": "writing",
         })
 
-        # ── The one Book Author call (native, whole book) ──────────────────
+        # ── Stage 1: the OUTLINE — the whole shape of the book in one fast
+        # call. This is what lets the parent reach the story screen in seconds
+        # instead of waiting for every page, picture and clip to be finished.
         try:
-            blueprint = await llm.generate_json(
+            outline = await llm.generate_json(
                 prompt=(
                     f'The parent asked for:\n"{pkg.moment_text}"\n\n'
-                    f"Decide whether this is a TOPIC to teach or a real MOMENT the "
-                    f"child lived, then write the 4-page book accordingly — in "
-                    f"{language} with an English gloss. Keep the subject the heart of "
-                    f"every page, warm, simple and TRUE. Choose the target words from "
-                    f"the topic for the child to say out loud."
+                    f"Plan the book: decide TOPIC or MOMENT, then give the page "
+                    f"beats, the character, and the target words. Title in "
+                    f"{language}; beats in English."
                 ),
-                system=_system_prompt(language),
+                system=_outline_prompt(language),
             )
-            story, plan, art = self._map_blueprint(blueprint, language)
+            story, plan, art = self._map_outline(outline, language)
         except Exception as e:  # noqa: BLE001 — never break the New path
-            logger.warning("[BookEngine] Book Author failed (%s) — falling back to classic", e)
+            # LOUD on purpose: this silently routed every New story onto the
+            # 5-minute classic path. The real provider error (e.g. a wrong
+            # model id) is logged AND streamed so it can't hide as "slow".
+            logger.error(
+                "[BookEngine] OUTLINE FAILED via %s — falling back to the "
+                "SLOW classic pipeline. Real error: %s: %s",
+                provider_key, type(e).__name__, e,
+            )
+            await self._classic._emit(package_id, {
+                "type": "engine_fallback",
+                "engine": "classic",
+                "provider": provider_key,
+                "reason": f"{type(e).__name__}: {str(e)[:200]}",
+            })
             return await self._classic.run_generation(package_id)
 
         # ── Map onto the package + walk the state machine ──────────────────
@@ -202,8 +308,24 @@ class BookOrchestrator:
         ):
             self._classic._transition(pkg, status)
 
+        self._classic.persist(pkg)
+        # The app can already draw the book: title, hero, and N placeholder
+        # cards with their beats and a live progress count.
         await self._classic._emit(package_id, {
-            "type": "agent_completed", "agent": "book_author", "progress_pct": 85.0,
+            "type": "outline_ready",
+            "package_id": package_id,
+            "title": story.title_target_lang or story.title,
+            "total_cards": len(story.scenes),
+            "progress_pct": 30.0,
+        })
+
+        # ── Stage 2: write page 1 before handing over, so there is always
+        # something to read the moment the screen appears.
+        await self._expand_card(pkg, 0, llm, language)
+        self._classic.persist(pkg)
+
+        await self._classic._emit(package_id, {
+            "type": "agent_completed", "agent": "book_author", "progress_pct": 60.0,
         })
 
         # Sprint 1: the native LLM writes the target language directly, so we
@@ -231,10 +353,211 @@ class BookOrchestrator:
             "progress_pct": 100.0,
             "status": StoryStatus.AWAITING_PARENT.value,
             "engine": "new",
+            "total_cards": len(pkg.story.scenes),
+            "ready_cards": sum(
+                1 for s in pkg.story.scenes if s.status == CardStatus.READY
+            ),
         })
 
-        # Character-locked illustrations in the BACKGROUND — the review is
-        # already text-fast, so art streams in while the parent reads/approves.
+        # Everything else streams in behind the parent's back: the remaining
+        # pages, then the character-locked art. The client never blocks on it,
+        # and because this runs server-side the work continues even if the app
+        # is closed — reopening just re-reads the package.
+        asyncio.create_task(self._finish_book(package_id, language))
+        return pkg
+
+    async def _finish_book(self, package_id: str, language: str) -> None:
+        """Write the remaining pages, then draw the pictures. Server-side, so
+        closing the app never interrupts it."""
+        try:
+            await self._expand_remaining(package_id, language)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[BookEngine] card expansion pass failed: %s", e)
+        try:
+            await self._generate_book_illustrations(package_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[BookEngine] illustration pass failed: %s", e)
+
+    async def _expand_remaining(self, package_id: str, language: str) -> None:
+        """Pages 2..N, a few at a time in page order so the early pages — the
+        ones the child reaches first — are always finished first."""
+        pkg = self._classic.get_package(package_id)
+        if not pkg:
+            return
+        locale = pkg.language.locale if pkg.language else "ta-SG"
+        _, llm, _ = self._resolve_llm(locale)
+        if llm is None:
+            return
+
+        pending = [
+            s.index for s in pkg.story.scenes
+            if s.status in (CardStatus.PENDING, CardStatus.FAILED)
+        ]
+        sem = asyncio.Semaphore(2)
+
+        async def one(idx: int) -> None:
+            async with sem:
+                live = self._classic.get_package(package_id)
+                if not live:
+                    return
+                await self._expand_card(live, idx, llm, language)
+                self._classic.persist(live)
+                await self._emit_card(package_id, live, idx)
+
+        await asyncio.gather(*[one(i) for i in pending])
+        pkg = self._classic.get_package(package_id) or pkg
+        ready = sum(1 for s in pkg.story.scenes if s.status == CardStatus.READY)
+        logger.info(
+            "[BookEngine] cards %s/%s ready for %s",
+            ready, len(pkg.story.scenes), package_id,
+        )
+
+    async def _emit_card(self, package_id: str, pkg: StoryPackage, idx: int) -> None:
+        scene = next((s for s in pkg.story.scenes if s.index == idx), None)
+        if scene is None:
+            return
+        total = len(pkg.story.scenes)
+        ready = sum(1 for s in pkg.story.scenes if s.status == CardStatus.READY)
+        await self._classic._emit(package_id, {
+            "type": "card_ready" if scene.status == CardStatus.READY
+            else "card_failed",
+            "package_id": package_id,
+            "index": idx,
+            "status": scene.status.value,
+            "error": scene.error,
+            "ready_cards": ready,
+            "total_cards": total,
+            "progress_pct": round(60 + (ready / max(total, 1)) * 40, 1),
+        })
+
+    async def _expand_card(
+        self, pkg: StoryPackage, idx: int, llm, language: str
+    ) -> None:
+        """Write one page from its outline beat. Marks the card ready or failed —
+        a failure never takes the rest of the book down with it."""
+        scene = next((s for s in pkg.story.scenes if s.index == idx), None)
+        if scene is None or scene.status == CardStatus.READY:
+            return
+        art = book_art_direction.get(pkg.id, {})
+        scene.status = CardStatus.GENERATING
+        scene.attempts += 1
+        total = len(pkg.story.scenes)
+        try:
+            result = await llm.generate_json(
+                prompt=(
+                    f'Book: "{pkg.story.title}" — a book for a young child about: '
+                    f"{pkg.moment_text}\n"
+                    f"The character on every page: {pkg.story.hero_name} "
+                    f"({art.get('hero_visual', '')})\n"
+                    f"Words the child is learning: "
+                    f"{', '.join(pkg.learning_plan.target_words)}\n\n"
+                    f"Write PAGE {idx + 1} of {total}. This page is about:\n"
+                    f"{scene.beat}\n\n"
+                    f"Write it in {language} with an English gloss."
+                ),
+                system=_expand_prompt(language),
+            )
+            native = (result.get("text") or "").strip()
+            if not native:
+                raise ValueError("no text returned for this page")
+
+            scene.narration_target_lang = native
+            scene.narration = (result.get("text_en") or "").strip()
+            title_native = (result.get("title") or "").strip()
+            if title_native:
+                scene.title_target_lang = title_native
+            itype = (result.get("interaction") or "").lower()
+            opts = [o for o in (result.get("options") or []) if str(o).strip()][:3]
+            if itype == "choice" and opts:
+                scene.interaction = SceneInteraction(
+                    type=InteractionType.CHOICE, options=opts
+                )
+            else:
+                scene.interaction = SceneInteraction(
+                    type=InteractionType.SPEAK,
+                    expected_intent=result.get("expected_intent") or "says_target",
+                )
+            if idx == 0 and opts:
+                pkg.story.opening_choices = opts
+            visual = (result.get("visual") or "").strip()
+            if visual:
+                pages = art.setdefault("pages", [])
+                entry = next((p for p in pages if p.get("index") == idx), None)
+                if entry:
+                    entry["visual"] = visual
+                else:
+                    pages.append({"index": idx, "visual": visual})
+            scene.status = CardStatus.READY
+            scene.error = ""
+        except Exception as e:  # noqa: BLE001 — one bad page, not a dead book
+            scene.status = CardStatus.FAILED
+            scene.error = f"{type(e).__name__}: {str(e)[:160]}"
+            logger.warning("[BookEngine] page %s failed: %s", idx, e)
+
+    async def resume_unfinished(self, limit: int = 20) -> int:
+        """Restart books that were mid-write when the server went down.
+
+        A redeploy kills the in-flight background tasks, which would otherwise
+        leave pages stuck on "writing…" forever. Card state lives in Neon, so
+        after hydration we can pick up exactly where each book stopped. Pages
+        that were mid-flight are put back to PENDING and rewritten; anything
+        already READY is left alone.
+        """
+        resumed = 0
+        for pkg in list(self._classic._packages.values()):
+            if resumed >= limit:
+                break
+            scenes = getattr(pkg.story, "scenes", None) or []
+            stuck = [
+                s for s in scenes
+                if s.status in (CardStatus.PENDING, CardStatus.GENERATING)
+            ]
+            if not stuck:
+                continue
+            # An interrupted page is not "in progress" any more — requeue it.
+            for s in stuck:
+                if s.status == CardStatus.GENERATING:
+                    s.status = CardStatus.PENDING
+            # The art direction cache is in-memory, so rebuild what we can from
+            # the story itself; pages still get pictures on the next pass.
+            book_art_direction.setdefault(pkg.id, {
+                "hero_visual": pkg.story.hero_name,
+                "art_style": "soft warm watercolour, rounded shapes, cheerful",
+                "pages": [],
+            })
+            self._classic.persist(pkg)
+            locale = pkg.language.locale if pkg.language else "ta-SG"
+            pack, _, _ = self._resolve_llm(locale)
+            language = getattr(pack, "language_name", None) or "Tamil"
+            logger.info(
+                "[BookEngine] resuming %s — %s page(s) unfinished",
+                pkg.id, len(stuck),
+            )
+            asyncio.create_task(self._finish_book(pkg.id, language))
+            resumed += 1
+        if resumed:
+            logger.info("[BookEngine] resumed %s unfinished book(s)", resumed)
+        return resumed
+
+    async def retry_card(self, package_id: str, idx: int) -> StoryPackage:
+        """Regenerate a single failed page, leaving the rest of the book alone."""
+        pkg = self._classic.get_package(package_id)
+        if not pkg:
+            raise ValueError(f"Package {package_id} not found")
+        scene = next((s for s in pkg.story.scenes if s.index == idx), None)
+        if scene is None:
+            raise ValueError(f"Page {idx} not found")
+        locale = pkg.language.locale if pkg.language else "ta-SG"
+        pack, llm, _ = self._resolve_llm(locale)
+        if llm is None:
+            raise ValueError("No story model available right now")
+        language = getattr(pack, "language_name", None) or "Tamil"
+
+        scene.status = CardStatus.PENDING
+        await self._expand_card(pkg, idx, llm, language)
+        self._classic.persist(pkg)
+        await self._emit_card(package_id, pkg, idx)
+        # Give the retried page its picture too.
         asyncio.create_task(self._generate_book_illustrations(package_id))
         return pkg
 
@@ -282,11 +605,19 @@ class BookOrchestrator:
                     "[BookEngine] page %s illustration failed: %s", scene.index, e
                 )
 
+        # Only draw pages that actually have text, and never redraw one that
+        # already has a picture (this pass also runs after a single-page retry).
+        todo = [
+            s for s in pkg.story.scenes
+            if s.status == CardStatus.READY and not s.illustration_url
+        ]
+        if not todo:
+            return
         # Cover first so the book looks ready fast, then the rest together.
-        await gen(pkg.story.scenes[0])
+        await gen(todo[0])
         self._classic.persist(pkg)
-        if len(pkg.story.scenes) > 1:
-            await asyncio.gather(*[gen(s) for s in pkg.story.scenes[1:]])
+        if len(todo) > 1:
+            await asyncio.gather(*[gen(s) for s in todo[1:]])
         self._classic.persist(pkg)
         done = sum(1 for s in pkg.story.scenes if s.illustration_url)
         logger.info(
@@ -294,57 +625,50 @@ class BookOrchestrator:
             done, len(pkg.story.scenes), package_id,
         )
 
-    # ── blueprint → schema ────────────────────────────────────────────────
-    def _map_blueprint(self, bp: dict, language: str):
-        pages = bp.get("pages", [])[:4]
-        if len(pages) < 4:
-            raise ValueError(f"book author returned {len(pages)} pages of 4")
+    # ── outline → schema (pages start empty, filled in one at a time) ─────
+    def _map_outline(self, bp: dict, language: str):
+        beats = bp.get("beats", [])[:6]
+        if len(beats) < 3:
+            raise ValueError(f"outline returned only {len(beats)} page beats")
 
-        _BEAT_EMOJI = ["🏡", "🌱", "🔍", "🌈"]
+        _BEAT_EMOJI = ["🏡", "🌱", "🔍", "🌈", "⭐", "🎈"]
         scenes: list[StoryScene] = []
-        for i, p in enumerate(pages):
-            native = (p.get("text") or "").strip()
-            if not native:
-                raise ValueError(f"page {i} has no native text")
-            itype = (p.get("interaction") or "").lower()
-            if itype == "choice" and p.get("options"):
-                interaction = SceneInteraction(
-                    type=InteractionType.CHOICE, options=p.get("options", []),
-                )
-            else:
-                interaction = SceneInteraction(
-                    type=InteractionType.SPEAK,
-                    expected_intent=p.get("expected_intent", "says_target"),
-                )
+        for i, b in enumerate(beats):
+            beat = (b.get("beat") or "").strip()
+            if not beat:
+                continue
             scenes.append(StoryScene(
-                index=i,
-                title=(p.get("title_en") or "").strip(),
-                title_target_lang=(p.get("title") or "").strip(),
-                emoji=_first_emoji(p.get("emoji", "")) or _BEAT_EMOJI[i],
-                narration=(p.get("text_en") or "").strip(),
-                narration_target_lang=native,
-                visual_id=f"scene_{i}",
-                interaction=interaction,
+                index=len(scenes),
+                title=(b.get("title_en") or "").strip(),
+                emoji=_first_emoji(b.get("emoji", "")) or _BEAT_EMOJI[i % 6],
+                visual_id=f"scene_{len(scenes)}",
+                beat=beat,
+                status=CardStatus.PENDING,
+                interaction=SceneInteraction(
+                    type=InteractionType.SPEAK, expected_intent="says_target"
+                ),
             ))
+        if len(scenes) < 3:
+            raise ValueError("outline had too few usable page beats")
 
         target_words = [w for w in (bp.get("target_words") or []) if str(w).strip()][:5]
         if len(target_words) < 3:
-            raise ValueError("book author returned fewer than 3 target words")
+            raise ValueError("outline returned fewer than 3 target words")
+
+        mission_en, mission_native = _safe_mission(
+            bp.get("room_mission_en", ""), bp.get("room_mission", "")
+        )
 
         story = Story(
             title=(bp.get("title_en") or bp.get("title") or "A Little Story").strip(),
             title_target_lang=(bp.get("title") or "").strip(),
-            opening_choices=[o for o in (pages[0].get("options") or []) if str(o).strip()][:3]
-            or ["Start the story"],
+            opening_choices=["Start the story"],
             scenes=scenes,
-            refrain=(bp.get("refrain_en") or "").strip(),
-            refrain_target_lang=(bp.get("refrain") or "").strip(),
             hero_name=(bp.get("hero_name") or "").strip(),
             hero_name_target_lang=(bp.get("hero_name") or "").strip(),
             room_mission=RoomMission(
-                instruction=(bp.get("room_mission_en")
-                             or "Find something in the room and tell a grown-up about it.").strip(),
-                instruction_target_lang=(bp.get("room_mission") or "").strip(),
+                instruction=mission_en,
+                instruction_target_lang=mission_native,
                 safety_validated=False,
             ),
             family_handoff=FamilyHandoff(
@@ -366,8 +690,7 @@ class BookOrchestrator:
         art = {
             "hero_visual": (bp.get("hero_visual") or "").strip(),
             "art_style": (bp.get("art_style") or "soft warm watercolour, rounded shapes").strip(),
-            "pages": [{"index": i, "visual": (p.get("visual") or "").strip()}
-                      for i, p in enumerate(pages)],
+            "pages": [],
         }
         return story, plan, art
 

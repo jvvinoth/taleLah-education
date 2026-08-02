@@ -46,7 +46,10 @@ class Settings(BaseSettings):
     # Qwen-Max stays as a fallback. Packs can also route to it via "llm": "gemini".
     gemini_api_key: str = ""
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
-    gemini_model: str = "gemini-3.5-flash"
+    # NOTE: verify this against your key (`/debug/llm` pings it). A wrong id
+    # makes every Book Author call fail and silently fall back to the slow
+    # classic pipeline — which is what made story creation take ~5 minutes.
+    gemini_model: str = "gemini-2.5-flash"
 
     # Sarvam AI — Tamil speech
     sarvam_api_key: str = ""

@@ -190,6 +190,17 @@ async def startup():
         orchestrator.set_image_provider(image_provider)
         logger.info("\u2705 Image provider initialized (%s)", settings.image_model)
 
+    # ── Resume books that were mid-write when we last went down. Runs after
+    #    the providers exist (hydration happens earlier, before they're wired)
+    #    and never blocks startup.
+    async def _resume_books() -> None:
+        try:
+            await book_orchestrator.resume_unfinished()
+        except Exception as e:  # noqa: BLE001 — never break startup
+            logger.warning("Book resume sweep failed: %s", e)
+
+    asyncio.create_task(_resume_books())
+
     # ── Community Scout — refresh language-based kids events on startup + daily
     from .agents.community_scout import CommunityScoutAgent
     from .api.routes import v1 as v1_module

@@ -1388,15 +1388,19 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   Future<void> _pickPhoto(AppState app) async {
     try {
+      // Ask the picker to re-encode: on iOS this turns a HEIC straight into a
+      // JPEG, and the smaller size keeps the upload well inside its timeout.
+      // The server sniffs the real format anyway, so this is belt-and-braces.
       final picked = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1600,
-        imageQuality: 85,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 80,
       );
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
       if (bytes.length > 10 * 1024 * 1024) {
-        _captureError('Photo too large — max 10 MB');
+        _captureError('Photo too large — try a smaller one');
         return;
       }
       setState(() {
@@ -1411,7 +1415,12 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       );
     } catch (e) {
       debugPrint('[TL] _pickPhoto error: $e');
-      _captureError('Could not read that photo — try typing instead');
+      // Surface the server's reason (e.g. an unsupported format) instead of a
+      // blanket failure the parent can't act on.
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _captureError(msg.isEmpty
+          ? 'Could not read that photo — try typing instead'
+          : msg);
     }
   }
 

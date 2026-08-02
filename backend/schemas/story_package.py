@@ -103,6 +103,16 @@ class SceneInteraction(BaseModel):
         return v[:MAX_CHOICES]
 
 
+class CardStatus(str, Enum):
+    """Per-page lifecycle, so a book can be read while the rest is still being
+    written — and a single bad page can be retried without losing the book."""
+
+    PENDING = "pending"        # queued, outline beat only
+    GENERATING = "generating"  # a worker is writing this page now
+    READY = "ready"            # text is readable (art/audio may still stream)
+    FAILED = "failed"          # gave up — retryable on its own
+
+
 class StoryScene(BaseModel):
     index: int
     # A chapter name the way a storybook has one — “The Slipper in the Bushes”,
@@ -118,6 +128,16 @@ class StoryScene(BaseModel):
     # Wanx-generated illustration URL for child mode (square, watercolor style)
     illustration_url: str = ""
     interaction: SceneInteraction = SceneInteraction(type=InteractionType.CHOICE)
+
+    # ── Progressive generation (new book engine) ──────────────────────────
+    # The one-line beat from the outline: what this page is about, written
+    # before the full page exists so the parent sees the shape immediately.
+    beat: str = ""
+    # Defaults to READY so every story built by the classic pipeline (which
+    # writes all pages at once) keeps behaving exactly as before.
+    status: CardStatus = CardStatus.READY
+    error: str = ""
+    attempts: int = 0
 
 
 class RoomMission(BaseModel):

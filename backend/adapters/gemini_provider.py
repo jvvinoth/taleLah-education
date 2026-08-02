@@ -31,7 +31,7 @@ class GeminiLLMProvider(LLMProvider):
         self,
         api_key: str,
         base_url: str = DEFAULT_BASE_URL,
-        model: str = "gemini-3.5-flash",
+        model: str = "gemini-2.5-flash",
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")

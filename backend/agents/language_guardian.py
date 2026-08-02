@@ -11,6 +11,7 @@ Writes: corrected target-language text, parent-support fields,
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from ..core.language_packs import LanguagePack, pack_loader
@@ -129,19 +130,27 @@ class LanguageGuardianAgent(BaseAgent):
             cultural_notes=pack.guardian.cultural_notes,
         )
 
-        # Translate story title
-        if package.story.title:
+        # Title, hero name and refrain are INDEPENDENT of each other, so run
+        # them concurrently — they used to be three chained round-trips. The
+        # hero name and refrain must land before the scenes, which reuse them.
+        async def _title() -> None:
+            if not package.story.title:
+                return
             try:
                 result = await self._translate(
                     llm, f"Translate: {package.story.title}", system, locale, language
                 )
-                package.story.title_target_lang = result.get("translated", package.story.title)
+                package.story.title_target_lang = result.get(
+                    "translated", package.story.title
+                )
             except Exception as e:
                 logger.error(f"[LanguageGuardian] Title translation failed: {e}")
 
-        # The hero's name, settled once. Left to each scene, a transliterated
-        # name comes back spelled differently every time.
-        if package.story.hero_name and not package.story.hero_name_target_lang:
+        async def _hero() -> None:
+            # Settled once. Left to each scene, a transliterated name comes
+            # back spelled differently every time.
+            if not package.story.hero_name or package.story.hero_name_target_lang:
+                return
             try:
                 result = await self._translate(
                     llm,
@@ -157,9 +166,11 @@ class LanguageGuardianAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"[LanguageGuardian] Hero name translation failed: {e}")
 
-        # The refrain is the line the child chants along with, so it must be
-        # translated ONCE and then reused word for word in every scene.
-        if package.story.refrain and not package.story.refrain_target_lang:
+        async def _refrain() -> None:
+            # The line the child chants along with — translated ONCE and then
+            # reused word for word in every scene.
+            if not package.story.refrain or package.story.refrain_target_lang:
+                return
             try:
                 result = await self._translate(
                     llm,
@@ -173,20 +184,27 @@ class LanguageGuardianAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"[LanguageGuardian] Refrain translation failed: {e}")
 
-        # Translate the scenes in order, each call carrying the story so far.
-        # One isolated call per scene cannot see the hero's name or the refrain
-        # it chose last time, so the home-language story drifts apart even when
-        # the English holds together.
-        try:
-            await self._translate_scenes(package, llm, system, locale, language)
-        except Exception as e:
-            logger.error(f"[LanguageGuardian] Scene translation failed: {e}")
+        await asyncio.gather(_title(), _hero(), _refrain())
 
-        # Chapter titles — nice to have, never a reason to block the story.
-        try:
-            await self._translate_scene_titles(package, llm, system, locale, language)
-        except Exception as e:
-            logger.error(f"[LanguageGuardian] Chapter titles failed: {e}")
+        # Scenes must stay in order (each call carries the story so far, so the
+        # home-language voice holds together), but the chapter titles are
+        # independent — run that whole pass alongside instead of after.
+        async def _scenes() -> None:
+            try:
+                await self._translate_scenes(package, llm, system, locale, language)
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Scene translation failed: {e}")
+
+        async def _titles() -> None:
+            # Nice to have, never a reason to block the story.
+            try:
+                await self._translate_scene_titles(
+                    package, llm, system, locale, language
+                )
+            except Exception as e:
+                logger.error(f"[LanguageGuardian] Chapter titles failed: {e}")
+
+        await asyncio.gather(_scenes(), _titles())
 
         # Any scene the pass could not render must still not reach a child as
         # English — mark it so validation catches it and the parent regenerates.

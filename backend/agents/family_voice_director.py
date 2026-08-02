@@ -10,6 +10,7 @@ Writes: familyHandoff, media.narrationSegments.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from typing import Optional
@@ -211,28 +212,44 @@ class FamilyVoiceDirectorAgent(BaseAgent):
                         ))
 
         blobs: dict[str, bytes] = {}
-        manifest: list[MediaAsset] = []
-        for asset_id, kind, idx, text, text_tl in items:
+        # These clips are independent, so synthesise them CONCURRENTLY instead
+        # of one-at-a-time — this loop was ~12-15 sequential TTS calls and was
+        # the wall behind the "Approve" button. Capped so we stay polite to the
+        # provider; manifest order is preserved by building it from `items`.
+        sem = asyncio.Semaphore(4)
+        manifest: list[Optional[MediaAsset]] = [None] * len(items)
+        provider_names: list[str] = []
+
+        async def synth_one(i: int, entry) -> None:
+            nonlocal provider_names
+            asset_id, kind, idx, text, text_tl = entry
             asset = MediaAsset(
                 id=asset_id, kind=kind, scene_index=idx,
                 text=text, text_target_lang=text_tl,
             )
             speak = text_tl or text
             if chain and speak:
-                try:
-                    audio, used = await self._synthesize_with(chain, speak)
-                    provider_name = used.__class__.__name__.replace("Provider", "").lower()
-                    ext = "wav" if audio[:4] == b"RIFF" else "mp3"
-                    filename = f"{asset_id}.{ext}"
-                    blobs[filename] = audio
-                    asset.url = f"media/{package.id}/{filename}"
-                    asset.duration_ms = _wav_duration_ms(audio)
-                    asset.tts_provider = provider_name
-                except Exception as e:
-                    logger.error(
-                        f"[FamilyVoiceDirector] Pre-gen TTS failed for {asset_id}: {e}"
-                    )
-            manifest.append(asset)
+                async with sem:
+                    try:
+                        audio, used = await self._synthesize_with(chain, speak)
+                        used_name = used.__class__.__name__.replace("Provider", "").lower()
+                        provider_names.append(used_name)
+                        ext = "wav" if audio[:4] == b"RIFF" else "mp3"
+                        filename = f"{asset_id}.{ext}"
+                        blobs[filename] = audio
+                        asset.url = f"media/{package.id}/{filename}"
+                        asset.duration_ms = _wav_duration_ms(audio)
+                        asset.tts_provider = used_name
+                    except Exception as e:
+                        logger.error(
+                            f"[FamilyVoiceDirector] Pre-gen TTS failed for {asset_id}: {e}"
+                        )
+            manifest[i] = asset
+
+        await asyncio.gather(*[synth_one(i, e) for i, e in enumerate(items)])
+        manifest = [a for a in manifest if a is not None]
+        if provider_names:
+            provider_name = provider_names[0]
 
         package.media.manifest = manifest
         package.media.manifest_ready = True

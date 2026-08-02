@@ -357,14 +357,25 @@ class ApiClient {
         'POST', Uri.parse('$baseUrl/moments/photo'));
     if (_token != null) req.headers['Authorization'] = 'Bearer $_token';
     req.fields['child_profile_id'] = childProfileId;
-    final ext = contentType.split('/').last;
+    // A picker can hand back an odd or empty type (web especially); the server
+    // sniffs the real format from the bytes, so a bad label must not crash the
+    // upload before it even leaves the phone.
+    MediaType media;
+    try {
+      media = MediaType.parse(
+        contentType.contains('/') ? contentType : 'image/jpeg',
+      );
+    } catch (_) {
+      media = MediaType('image', 'jpeg');
+    }
+    final ext = media.subtype.isEmpty ? 'jpg' : media.subtype;
     req.files.add(http.MultipartFile.fromBytes(
       'image',
       imageBytes,
       filename: 'moment.$ext',
-      contentType: MediaType.parse(contentType),
+      contentType: media,
     ));
-    final streamed = await req.send().timeout(const Duration(seconds: 90));
+    final streamed = await req.send().timeout(const Duration(seconds: 120));
     final res = await http.Response.fromStream(streamed);
     if (res.statusCode >= 400) {
       throw ApiException(res.statusCode, _detail(res, 'Photo capture failed'));
@@ -412,6 +423,20 @@ class ApiClient {
     }
     final data = jsonDecode(res.body);
     return data['package_id'] as String;
+  }
+
+  /// Rewrite ONE failed page of a book without touching the rest.
+  Future<Map<String, dynamic>> retryCard(String packageId, int index) async {
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl/packages/$packageId/cards/$index/retry'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 90));
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, _detail(res, 'Retry failed'));
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> getPackageDetail(String packageId) async {

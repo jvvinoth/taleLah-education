@@ -218,6 +218,10 @@ class ApprovedScene {
   /// Wanx-generated illustration URL (empty = use emoji fallback).
   final String illustrationUrl;
 
+  /// Progressive generation: pending | generating | ready | failed.
+  /// Classic stories are always 'ready'.
+  final String status;
+
   ApprovedScene({
     required this.index,
     this.title = '',
@@ -229,7 +233,10 @@ class ApprovedScene {
     this.options = const [],
     this.expectedIntent = '',
     this.illustrationUrl = '',
+    this.status = 'ready',
   });
+
+  bool get isReady => status == 'ready';
 
   factory ApprovedScene.fromJson(Map<String, dynamic> json) {
     final interaction = json['interaction'] as Map<String, dynamic>? ?? {};
@@ -247,6 +254,7 @@ class ApprovedScene {
           [],
       expectedIntent: interaction['expected_intent'] as String? ?? '',
       illustrationUrl: json['illustration_url'] as String? ?? '',
+      status: json['status'] as String? ?? 'ready',
     );
   }
 }

@@ -1,5 +1,7 @@
 /// Parent Review & Edit (F2) — review facts, swap words, tune difficulty,
 /// regenerate single components (cap 5), then approve. Immutable after approval.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -29,10 +31,18 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
 
   ApiClient get _api => context.read<AppState>().api;
 
+  Timer? _cardPoll;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _cardPoll?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -42,10 +52,42 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
         _pkg = detail['package'] as Map<String, dynamic>?;
         _loading = false;
       });
+      _pollWhileWriting();
     } catch (e) {
       setState(() => _loading = false);
       _showError('Failed to load story: $e');
     }
+  }
+
+  /// Pages are written one at a time on the server, so refresh until they have
+  /// all landed. The work continues server-side regardless — this just keeps
+  /// the screen in step with it.
+  void _pollWhileWriting() {
+    bool stillWriting() {
+      final scenes = (_pkg?['story'] as Map?)?['scenes'] as List? ?? [];
+      return scenes.any((s) {
+        final st = (s as Map)['status'] as String? ?? 'ready';
+        return st == 'pending' || st == 'generating';
+      });
+    }
+
+    if (!stillWriting()) return;
+    _cardPoll?.cancel();
+    var attempts = 0;
+    _cardPoll = Timer.periodic(const Duration(seconds: 3), (t) async {
+      attempts++;
+      if (!mounted || attempts > 40 || !stillWriting()) {
+        t.cancel();
+        return;
+      }
+      try {
+        final detail = await _api.getPackageDetail(widget.packageId);
+        final pkg = detail['package'] as Map<String, dynamic>?;
+        if (pkg != null && mounted) setState(() => _pkg = pkg);
+      } catch (_) {
+        // Transient — the next tick tries again.
+      }
+    });
   }
 
   bool get _editable => _pkg?['status'] == 'awaiting_parent';
@@ -586,14 +628,40 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
 
   Widget _buildScenes() {
     final scenes = (_pkg!['story'] as Map?)?['scenes'] as List? ?? [];
+    // Pages are written one at a time now, so show how far along the book is
+    // instead of hiding everything until the last page is finished.
+    final ready = scenes
+        .where((s) => ((s as Map)['status'] as String? ?? 'ready') == 'ready')
+        .length;
+    final building = ready < scenes.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionHeader('📖 Scenes', '${scenes.length} scenes'),
+        _sectionHeader(
+          '📖 Scenes',
+          building ? '$ready of ${scenes.length} pages ready…'
+                   : '${scenes.length} scenes',
+        ),
+        if (building) ...[
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: scenes.isEmpty ? 0 : ready / scenes.length,
+              minHeight: 6,
+              backgroundColor: TColors.mist,
+              valueColor: const AlwaysStoppedAnimation(TColors.teal),
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         ...scenes.map((s) {
           final scene = s as Map<String, dynamic>;
           final idx = scene['index'] as int? ?? 0;
+          final status = scene['status'] as String? ?? 'ready';
+          final isReady = status == 'ready';
+          final isFailed = status == 'failed';
+          final beat = scene['beat'] as String? ?? '';
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: TCard(
@@ -617,25 +685,62 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
                                 fontWeight: FontWeight.w800,
                                 color: TColors.coral)),
                       ),
+                      const SizedBox(width: 6),
+                      if (!isReady) _cardStatusPill(status),
                       const Spacer(),
-                      if (_editable) _regenButton('scene', sceneIndex: idx),
+                      if (_editable && isReady)
+                        _regenButton('scene', sceneIndex: idx),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text(scene['narration'] as String? ?? '',
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          height: 1.4)),
-                  if ((scene['narration_target_lang'] as String? ?? '')
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(scene['narration_target_lang'] as String,
+                  if (isReady) ...[
+                    Text(scene['narration'] as String? ?? '',
                         style: const TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: TColors.tealDeep,
+                            fontWeight: FontWeight.w600,
                             height: 1.4)),
+                    if ((scene['narration_target_lang'] as String? ?? '')
+                        .isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(scene['narration_target_lang'] as String,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: TColors.tealDeep,
+                              height: 1.4)),
+                    ],
+                  ] else ...[
+                    // Not written yet — show the outline beat so the parent can
+                    // already see what this page will be about.
+                    if (beat.isNotEmpty)
+                      Text(beat,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                              color: TColors.inkFaint,
+                              height: 1.4)),
+                    const SizedBox(height: 10),
+                    if (isFailed)
+                      _retryCardButton(idx)
+                    else
+                      Row(
+                        children: const [
+                          SizedBox(
+                            width: 13,
+                            height: 13,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation(TColors.teal)),
+                          ),
+                          SizedBox(width: 8),
+                          Text('Mina is writing this page…',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: TColors.inkSoft)),
+                        ],
+                      ),
                   ],
                 ],
               ),
@@ -769,6 +874,77 @@ class _ParentReviewScreenState extends State<ParentReviewScreen> {
           ),
       ],
     );
+  }
+
+  /// Small "writing…" / "couldn't write" tag next to a page that isn't done.
+  Widget _cardStatusPill(String status) {
+    final failed = status == 'failed';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: failed ? const Color(0xFFF8E1D8) : TColors.mist,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        failed ? 'needs a retry' : 'writing…',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: failed ? TColors.coral : const Color(0xFF1F7B75),
+        ),
+      ),
+    );
+  }
+
+  /// One page failed — rewrite just that page, keep the rest of the book.
+  Widget _retryCardButton(int index) {
+    return GestureDetector(
+      onTap: _busy ? null : () => _retryCard(index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: TColors.mint,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _busy
+                ? const SizedBox(
+                    width: 13,
+                    height: 13,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh_rounded,
+                    size: 15, color: Color(0xFF1F7B75)),
+            const SizedBox(width: 6),
+            const Text('Write this page again',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1F7B75))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _retryCard(int index) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final r = await _api.retryCard(widget.packageId, index);
+      if (!mounted) return;
+      final pkg = r['package'] as Map<String, dynamic>?;
+      if (pkg != null) setState(() => _pkg = pkg);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not rewrite that page: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Widget _regenButton(String component, {int sceneIndex = 0}) {

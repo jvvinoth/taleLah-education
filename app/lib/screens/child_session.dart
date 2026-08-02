@@ -176,9 +176,15 @@ class _ChildSessionScreenState extends State<ChildSessionScreen> {
     final story = _story;
     if (story == null || story.scenes.isEmpty) return _demoScenes;
 
+    // A page that is still being written (or failed) has no text yet — never
+    // hand a child a blank page. The parent's review screen is where unfinished
+    // pages are shown and retried.
+    final source = story.scenes.where((s) => s.isReady).toList();
+    if (source.isEmpty) return _demoScenes;
+
     final scenes = <_DemoScene>[];
-    for (var i = 0; i < story.scenes.length; i++) {
-      final s = story.scenes[i];
+    for (var i = 0; i < source.length; i++) {
+      final s = source[i];
       final palette = _demoScenes[i % _demoScenes.length];
       final isChoice = s.interactionType == 'choice' && s.options.isNotEmpty;
       // The writer named this chapter and chose its picture, so use theirs.

@@ -890,18 +890,37 @@ async def capture_moment_photo(
     """F5 — photo ≤10 MB → Qwen-VL-Max facts → text pipeline. Image discarded."""
     _require_profile(adult_id, child_profile_id)
 
-    content_type = (image.content_type or "").lower()
-    if content_type not in ("image/jpeg", "image/png", "image/webp"):
-        raise HTTPException(415, "Use a JPEG, PNG, or WebP photo")
+    from ...adapters.image_prep import prepare_photo, sniff_image_format
+
     image_bytes = await image.read()
     if len(image_bytes) > 10 * 1024 * 1024:
         raise HTTPException(413, "Photo too large (max 10 MB)")
 
+    # Trust the bytes, not the label — browsers and pickers mislabel constantly,
+    # and iPhones send HEIC, which the old content-type allowlist rejected with
+    # a 415 before the photo ever reached the model.
+    fmt = sniff_image_format(image_bytes)
+    if fmt in ("unknown", "mp4"):
+        raise HTTPException(
+            415, "That doesn't look like a photo — try a JPEG, PNG, HEIC or WebP"
+        )
+
     vision = _get_vision()
     if vision is None:
         raise HTTPException(503, "Photo understanding unavailable — try typing instead")
-    data_uri = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"
-    del image_bytes  # hard rule 5 — raw photo never retained
+
+    # Normalise to a small JPEG: fixes HEIC and cuts the base64 payload ~10x,
+    # which is what made big photos time out.
+    prepared, content_type, note = prepare_photo(image_bytes, image.content_type or "")
+    if fmt == "heic" and note.startswith("passthrough"):
+        raise HTTPException(
+            415,
+            "This phone sent an Apple HEIC photo the server can't open yet — "
+            "please choose 'Most Compatible' in iPhone camera settings, or type "
+            "the moment instead.",
+        )
+    data_uri = f"data:{content_type};base64,{base64.b64encode(prepared).decode()}"
+    del image_bytes, prepared  # hard rule 5 — raw photo never retained
     try:
         facts = await vision.extract_facts(image_url=data_uri)
     except Exception as e:
@@ -1149,6 +1168,54 @@ async def debug_llm():
     return info
 
 
+@router.post("/packages/{package_id}/cards/{index}/retry")
+async def retry_card(
+    package_id: str, index: int, adult_id: str = Depends(require_adult)
+):
+    """Rewrite ONE page that failed, without touching the rest of the book."""
+    _require_package(adult_id, package_id)
+    try:
+        pkg = await book_orchestrator.retry_card(package_id, index)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Could not rewrite that page: {e}")
+    scene = next((s for s in pkg.story.scenes if s.index == index), None)
+    return {
+        "index": index,
+        "status": scene.status.value if scene else "unknown",
+        "error": scene.error if scene else "",
+        "package": pkg.model_dump(),
+    }
+
+
+# Packages whose narration audio is being synthesised right now — stops the
+# approve task and a fast "give to child" tap from generating the same clips twice.
+_audio_inflight: set[str] = set()
+
+
+async def _pregenerate_audio(package_id: str) -> None:
+    """Synthesise the narration manifest off the request path (F4)."""
+    if package_id in _audio_inflight:
+        return
+    fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
+    pkg = orchestrator.get_package(package_id)
+    if fvd is None or pkg is None:
+        return
+    _audio_inflight.add(package_id)
+    try:
+        blobs = await fvd.pregenerate_manifest(pkg)
+        if blobs:
+            _media_blobs[pkg.id] = blobs
+            persistence.save_blobs(pkg.id, blobs)
+            persistence.save("story_packages", pkg.id, pkg)
+        logger.info("[F4] Background audio ready for %s", package_id)
+    except Exception as e:  # noqa: BLE001 — text/parent-read fallback stands
+        logger.error(f"[F4] Background TTS failed for {package_id}: {e}")
+    finally:
+        _audio_inflight.discard(package_id)
+
+
 @router.post("/packages/{package_id}/approve", response_model=StoryPackageResponse)
 async def approve_package(
     package_id: str,
@@ -1163,16 +1230,10 @@ async def approve_package(
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    # F4 — TTS pre-generation: synthesize the full media manifest on approval.
-    # Failure is non-fatal — assets stay text-only (parent-read fallback).
-    fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
-    if fvd is not None:
-        try:
-            blobs = await fvd.pregenerate_manifest(pkg)
-            _media_blobs[pkg.id] = blobs
-            persistence.save_blobs(pkg.id, blobs)
-        except Exception as e:
-            logger.error(f"[F4] TTS pre-generation failed for {pkg.id}: {e}")
+    # F4 — TTS pre-generation now runs in the BACKGROUND so "Approve" returns
+    # immediately instead of waiting on a dozen speech clips. If the child
+    # opens the story before the audio lands, /sessions/start self-heals it.
+    asyncio.create_task(_pregenerate_audio(pkg.id))
     return StoryPackageResponse.from_package(pkg)
 
 
@@ -1512,16 +1573,26 @@ async def start_session(data: SessionStart, adult_id: str = Depends(require_adul
             except Exception as e:
                 logger.warning(f"[F4] Vocabulary backfill failed for {pkg.id}: {e}")
     if not has_audio or not has_blobs or not has_feedback or vocab_added:
-        fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
-        if fvd is not None:
-            try:
-                blobs = await fvd.pregenerate_manifest(pkg)
-                if blobs:
-                    _media_blobs[pkg.id] = blobs
-                    persistence.save_blobs(pkg.id, blobs)
-                    persistence.save("story_packages", pkg.id, pkg)
-            except Exception as e:
-                logger.warning(f"[F4] Manifest self-heal failed for {pkg.id}: {e}")
+        # Approval kicked audio off in the background — if it's still running,
+        # wait for it rather than synthesising the same clips a second time.
+        if pkg.id in _audio_inflight:
+            for _ in range(40):  # up to ~20s
+                await asyncio.sleep(0.5)
+                if pkg.id not in _audio_inflight:
+                    break
+            if _media_blobs.get(pkg.id):
+                has_blobs = True
+        if not _media_blobs.get(pkg.id) or vocab_added:
+            fvd = orchestrator._agents.get(AgentName.FAMILY_VOICE_DIRECTOR)
+            if fvd is not None:
+                try:
+                    blobs = await fvd.pregenerate_manifest(pkg)
+                    if blobs:
+                        _media_blobs[pkg.id] = blobs
+                        persistence.save_blobs(pkg.id, blobs)
+                        persistence.save("story_packages", pkg.id, pkg)
+                except Exception as e:
+                    logger.warning(f"[F4] Manifest self-heal failed for {pkg.id}: {e}")
 
     try:
         pkg = await orchestrator.start_session(data.story_package_id)

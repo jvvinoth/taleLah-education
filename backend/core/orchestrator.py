@@ -310,22 +310,31 @@ class WorkflowOrchestrator:
                 logger.error(f"Agent {agent_name.value} failed: {e}")
                 raise
 
-        # After all agents, generate scene illustrations (non-blocking: failures
-        # are logged but never block story delivery — emoji fallback stays).
+        # Scene illustrations run in the BACKGROUND. They used to be awaited
+        # here, so four Wanx jobs (each polling up to 90s) stood between the
+        # parent and their finished story. The text is what gets reviewed, and
+        # every page has an emoji fallback, so art streams in afterwards — the
+        # child screen polls and swaps each picture in as it lands.
         if self._image_provider and pkg.story.scenes:
-            await self._emit(package_id, {
-                "type": "agent_started",
-                "agent": "illustration",
-                "progress_pct": 92.0,
-                "status": "generating_illustrations",
-            })
-            await self._generate_illustrations(pkg)
-            self.persist(pkg)
-            await self._emit(package_id, {
-                "type": "agent_completed",
-                "agent": "illustration",
-                "progress_pct": 98.0,
-            })
+            async def _art() -> None:
+                await self._emit(package_id, {
+                    "type": "agent_started",
+                    "agent": "illustration",
+                    "progress_pct": 92.0,
+                    "status": "generating_illustrations",
+                })
+                try:
+                    await self._generate_illustrations(pkg)
+                    self.persist(pkg)
+                except Exception as e:  # noqa: BLE001 — never break delivery
+                    logger.warning(f"[Illustration] background pass failed: {e}")
+                await self._emit(package_id, {
+                    "type": "agent_completed",
+                    "agent": "illustration",
+                    "progress_pct": 98.0,
+                })
+
+            asyncio.create_task(_art())
 
         # After all agents, run the safety gate so it ALWAYS executes on the
         # generation path (routes used to compute it and throw the result
