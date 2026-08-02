@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../models/community_event.dart';
+import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live_mic.dart';
@@ -49,12 +51,42 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     ('ms-SG', 'Melayu', 'Malay'),
   ];
 
+  // Home previews — the child's own books and what's on nearby, so the home
+  // screen shows there is a product here, not just a form.
+  List<StoryPackageSummary> _recentStories = [];
+  List<CommunityEvent> _nearbyEvents = [];
+  String _previewProfileId = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPreviews());
+  }
+
   @override
   void dispose() {
     _momentMic.dispose();
     _earcons.dispose();
     _textController.dispose();
     super.dispose();
+  }
+
+  /// Best-effort: a preview row that fails just stays hidden.
+  Future<void> _loadPreviews() async {
+    final app = context.read<AppState>();
+    final profileId = app.activeProfile?.id ?? '';
+    _previewProfileId = profileId;
+    try {
+      final stories = await app.api.listPackages(childProfileId: profileId);
+      if (mounted) {
+        setState(() => _recentStories =
+            stories.where((s) => s.status == 'approved').take(6).toList());
+      }
+    } catch (_) {/* row hides itself */}
+    try {
+      final events = await app.api.getEvents();
+      if (mounted) setState(() => _nearbyEvents = events.take(6).toList());
+    } catch (_) {/* row hides itself */}
   }
 
   @override
@@ -64,6 +96,13 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     _maybeShowCaptureError(app);
     _maybeShowClarification(app);
     _maybeFlashComplete(app);
+    // Switching child (or finishing a story) changes what belongs in the
+    // preview rows — refresh them once, after this frame.
+    final activeId = app.activeProfile?.id ?? '';
+    if (activeId != _previewProfileId) {
+      _previewProfileId = activeId;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadPreviews());
+    }
 
     return Container(
       decoration: const BoxDecoration(gradient: TGradients.page),
@@ -77,18 +116,23 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildHeader(app),
-                  const SizedBox(height: 24),
-                  _buildHeroCard(app),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('Capture a Moment', 'Turn today into a story'),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 22),
+                  _buildGreeting(app),
+                  const SizedBox(height: 14),
+                  // The prompt is the page — everything else is secondary.
                   _buildMomentCapture(app),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 18),
+                  _buildStarterChips(app),
+                  const SizedBox(height: 22),
                   if (app.latestPackage != null && !app.isGenerating) ...[
                     _buildSectionTitle('Story Ready', 'Review & play together'),
                     const SizedBox(height: 12),
                     _buildPackageCard(app),
+                    const SizedBox(height: 22),
                   ],
+                  _buildLibraryRow(app),
+                  if (_recentStories.isNotEmpty) const SizedBox(height: 22),
+                  _buildEventsRow(app),
                 ],
               ),
             ),
@@ -343,224 +387,296 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   // ── Header ──────────────────────────────────────────────────────────
 
+  /// Top bar — brand on the left, the child you're making a story for on the
+  /// right. The switcher lives here rather than buried in a card, so twins and
+  /// mixed-language homes are always one tap apart.
   Widget _buildHeader(AppState app) {
     return Row(
       children: [
-        const TMascot(size: 52),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _greeting(app),
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: TColors.inkSoft,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                'TaleLah',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                  color: TColors.ink,
-                ),
-              ),
-            ],
+        const TMascot(size: 38),
+        const SizedBox(width: 9),
+        const Text(
+          'TaleLah',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
+            color: TColors.ink,
           ),
         ),
-        _iconBubble(Icons.notifications_none_rounded),
-      ],
-    );
-  }
-
-  /// Greeting follows the active child's home language; "Welcome" is the
-  /// default when no profile is selected (or the child learns in English).
-  String _greeting(AppState app) {
-    switch (app.activeProfile?.homeLanguage) {
-      case 'ta':
-        return 'Vanakkam 👋';
-      case 'zh':
-        return '欢迎 👋';
-      case 'ms':
-        return 'Selamat datang 👋';
-      default:
-        return 'Welcome 👋';
-    }
-  }
-
-  Widget _iconBubble(IconData icon) {
-    return Container(
-      width: 46,
-      height: 46,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: TShadows.card,
-      ),
-      child: Icon(icon, color: TColors.ink, size: 22),
-    );
-  }
-
-  // ── Hero card ───────────────────────────────────────────────────────
-
-  Widget _buildHeroCard(AppState app) {
-    final childName = app.activeProfile?.alias;
-    return TCard(
-      gradient: TGradients.hero,
-      radius: 28,
-      shadows: TShadows.glowTeal,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  "✨ Today's Adventure",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              const Text('🚂', style: TextStyle(fontSize: 28)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            childName != null
-                ? "$childName's mother-tongue\njourney awaits"
-                : 'Every moment becomes\na magical story',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              height: 1.25,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '5-minute stories • Real family moments',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.75),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 20),
-          // Child profile pill / add child
-          if (app.activeProfile != null)
-            _childPill(app)
-          else
-            _addChildButton(app),
-        ],
-      ),
-    );
-  }
-
-  Widget _childPill(AppState app) {
-    final p = app.activeProfile!;
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(40),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
+        const Spacer(),
+        _kidSwitcherButton(app),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () => _openSettingsSheet(app),
+          child: Container(
             width: 38,
             height: 38,
             decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
-              image: p.photoUrl != null && p.photoUrl!.isNotEmpty
-                  ? DecorationImage(
-                      image: NetworkImage(app.api.photoUrl(p.photoUrl!)),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
+              boxShadow: TShadows.card,
             ),
-            child: p.photoUrl == null || p.photoUrl!.isEmpty
-                ? Center(
-                    child: Text(
-                      p.alias.isNotEmpty ? p.alias[0].toUpperCase() : '🙂',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: TColors.tealDeep,
-                      ),
-                    ),
-                  )
-                : null,
+            child: const Icon(Icons.tune_rounded,
+                color: TColors.inkSoft, size: 18),
           ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                p.alias,
+        ),
+      ],
+    );
+  }
+
+  Widget _kidSwitcherButton(AppState app) {
+    final kid = app.activeProfile;
+    final initial =
+        (kid?.alias.trim().isNotEmpty ?? false) ? kid!.alias.trim()[0].toUpperCase() : '+';
+    return GestureDetector(
+      onTap: () => _openKidSwitcher(app),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(3, 3, 10, 3),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: TShadows.card,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: const BoxDecoration(
+                color: TColors.gold,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initial,
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w800,
+                  color: TColors.ink,
                 ),
               ),
-              Text(
-                'Age ${p.ageBand} • ${_localeName(p.targetLocale)}',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              kid?.alias ?? 'Add child',
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: TColors.ink,
               ),
-            ],
-          ),
-          const SizedBox(width: 14),
-        ],
+            ),
+            const SizedBox(width: 3),
+            const Icon(Icons.keyboard_arrow_down_rounded,
+                size: 16, color: TColors.inkFaint),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _addChildButton(AppState app) {
-    return GestureDetector(
-      onTap: () => _showCreateProfileDialog(app),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        decoration: BoxDecoration(
+  /// Whose story today — every child, their age band and language, plus a way
+  /// to add another. Replaces hunting through the profile tab.
+  void _openKidSwitcher(AppState app) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(40),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
         ),
-        child: const Row(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(Icons.add_rounded, color: TColors.tealDeep, size: 20),
-            SizedBox(width: 6),
-            Text(
-              'Add your child',
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3DCCB),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Whose story today?',
               style: TextStyle(
-                color: TColors.tealDeep,
+                fontSize: 18,
                 fontWeight: FontWeight.w800,
-                fontSize: 14,
+                color: TColors.ink,
+              ),
+            ),
+            const SizedBox(height: 14),
+            ...app.profiles.map((p) {
+              final selected = p.id == app.activeProfile?.id;
+              final lang = _locales.firstWhere(
+                (l) => l.$1 == p.targetLocale,
+                orElse: () => ('', '', ''),
+              );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    app.selectProfile(p);
+                    setState(() => _selectedLocale = p.targetLocale);
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: selected ? TColors.mist : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: selected ? TColors.teal : const Color(0xFFEDE8DA),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: const BoxDecoration(
+                            color: TColors.gold,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            p.alias.trim().isNotEmpty
+                                ? p.alias.trim()[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: TColors.ink,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                p.alias,
+                                style: const TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: TColors.ink,
+                                ),
+                              ),
+                              Text(
+                                'Age ${p.ageBand}'
+                                '${lang.$2.isEmpty ? '' : ' · ${lang.$2} ${lang.$3}'}',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: TColors.inkFaint,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (selected)
+                          const Icon(Icons.check_circle_rounded,
+                              color: TColors.teal, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+                _promptCreateProfile(app);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFE3DCCB),
+                    style: BorderStyle.solid,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_rounded, size: 18, color: TColors.inkSoft),
+                    SizedBox(width: 6),
+                    Text(
+                      'Add another child',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: TColors.inkSoft,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Story engine is a testing control, not a parenting decision — it lives
+  /// behind the tune icon instead of on the home screen.
+  void _openSettingsSheet(AppState app) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => StatefulBuilder(
+        builder: (_, setSheet) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE3DCCB),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Story engine',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: TColors.ink,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'New writes the whole book at once and reads faster.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: TColors.inkFaint,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _engineToggle(onChanged: () => setSheet(() {})),
+              const SizedBox(height: 10),
+            ],
+          ),
         ),
       ),
     );
@@ -595,28 +711,48 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
   // ── Moment capture ──────────────────────────────────────────────────
 
+  /// The prompt box — this IS the home screen. One inviting field, with voice,
+  /// photo and language as small controls inside it, and a single Create.
   Widget _buildMomentCapture(AppState app) {
-    return TCard(
-      radius: 28,
-      padding: const EdgeInsets.all(20),
+    final busy = app.isGenerating;
+    final lang = _locales.firstWhere(
+      (l) => l.$1 == _selectedLocale,
+      orElse: () => _locales.first,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: TColors.teal, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: TColors.teal.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Text field
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F3E9),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: TextField(
+          if (_isTranscribing)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _buildTranscribingStrip(),
+            )
+          else
+            TextField(
               controller: _textController,
-              maxLines: 3,
+              maxLines: 4,
+              minLines: 2,
               maxLength: 500,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              decoration: InputDecoration(
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600, height: 1.45),
+              decoration: const InputDecoration(
                 hintText:
-                    'What did your child do today?\ne.g. Arun saw a red train at the MRT…',
-                hintStyle: const TextStyle(
+                    'Tell me anything…\n“He built an MRT out of blocks”\nor “Explain how frogs live”',
+                hintStyle: TextStyle(
                   color: TColors.inkFaint,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -624,158 +760,253 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 ),
                 counterText: '',
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.all(16),
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 8, bottom: 40),
-                  child: Icon(Icons.auto_awesome,
-                      color: TColors.teal.withValues(alpha: 0.6), size: 20),
-                ),
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          // F5 — voice + photo capture chips (hidden while transcribing)
-          if (_isTranscribing)
-            _buildTranscribingStrip()
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: _captureChip(
-                    emoji: '🎙️',
-                    label: _voiceOverlayVisible ? 'Listening…' : 'Speak it',
-                    active: _voiceOverlayVisible,
-                    onTap: app.isGenerating || _voiceOverlayVisible
-                        ? null
-                        : app.activeProfile == null
-                            ? () => _promptCreateProfile(app)
-                            : () => _startVoiceCapture(app),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _captureChip(
-                    emoji: '📸',
-                    label: 'Snap it',
-                    active: false,
-                    onTap: app.isGenerating || _voiceOverlayVisible
-                        ? null
-                        : app.activeProfile == null
-                            ? () => _promptCreateProfile(app)
-                            : () => _pickPhoto(app),
-                  ),
-                ),
-              ],
-            ),
-          const SizedBox(height: 16),
-          // Language pills
+          const Divider(height: 18, color: Color(0xFFEDE8DA)),
           Row(
-            children: _locales.map((l) {
-              final selected = _selectedLocale == l.$1;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: () => setState(() => _selectedLocale = l.$1),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: selected ? TColors.ink : const Color(0xFFF0EDE1),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          l.$2,
-                          style: TextStyle(
-                            color: selected ? Colors.white : TColors.inkSoft,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          l.$3,
-                          style: TextStyle(
-                            color: selected
-                                ? Colors.white.withValues(alpha: 0.6)
-                                : TColors.inkFaint,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+            children: [
+              _toolIcon(
+                emoji: _voiceOverlayVisible ? '🔴' : '🎙️',
+                active: _voiceOverlayVisible,
+                onTap: busy || _voiceOverlayVisible
+                    ? null
+                    : app.activeProfile == null
+                        ? () => _promptCreateProfile(app)
+                        : () => _startVoiceCapture(app),
+              ),
+              const SizedBox(width: 7),
+              _toolIcon(
+                emoji: '📷',
+                active: false,
+                onTap: busy || _voiceOverlayVisible
+                    ? null
+                    : app.activeProfile == null
+                        ? () => _promptCreateProfile(app)
+                        : () => _pickPhoto(app),
+              ),
+              const SizedBox(width: 7),
+              // Language lives here as a compact pill instead of a whole row.
+              GestureDetector(
+                onTap: busy ? null : () => _openLanguagePicker(),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: TColors.mist,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    lang.$2,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: TColors.tealDeep,
                     ),
                   ),
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 14),
-          _engineToggle(),
-          const SizedBox(height: 18),
-          // CTA
-          GestureDetector(
-            onTap: app.activeProfile == null
-                ? () => _promptCreateProfile(app)
-                : app.isGenerating
-                    ? () => setState(() => _progressDismissed = false)
-                    : () => _startGeneration(app),
-            child: Container(
-              height: 58,
-              decoration: BoxDecoration(
-                gradient: app.activeProfile == null
-                    ? null
-                    : app.isGenerating
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: app.activeProfile == null
+                    ? () => _promptCreateProfile(app)
+                    : busy
+                        ? () => setState(() => _progressDismissed = false)
+                        : () => _startGeneration(app),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  decoration: BoxDecoration(
+                    gradient: app.activeProfile == null || busy
                         ? null
                         : TGradients.coral,
-                color: app.activeProfile == null
-                    ? const Color(0xFFE8E4D8)
-                    : app.isGenerating
-                        ? TColors.mist
-                        : null,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: app.activeProfile == null || app.isGenerating
-                    ? null
-                    : TShadows.glowCoral,
-              ),
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (app.isGenerating)
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: TColors.teal,
+                    color: app.activeProfile == null
+                        ? const Color(0xFFE8E4D8)
+                        : busy
+                            ? TColors.mist
+                            : null,
+                    borderRadius: BorderRadius.circular(21),
+                    boxShadow: app.activeProfile == null || busy
+                        ? null
+                        : TShadows.glowCoral,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (busy)
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5, color: TColors.teal),
+                        )
+                      else
+                        Icon(Icons.auto_fix_high_rounded,
+                            size: 17,
+                            color: app.activeProfile == null
+                                ? TColors.inkFaint
+                                : Colors.white),
+                      const SizedBox(width: 6),
+                      Text(
+                        busy ? 'Creating…' : 'Create',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: app.activeProfile == null
+                              ? TColors.inkFaint
+                              : busy
+                                  ? TColors.teal
+                                  : Colors.white,
                         ),
-                      )
-                    else
-                      Icon(
-                        Icons.auto_fix_high_rounded,
-                        color: app.activeProfile == null
-                            ? TColors.inkFaint
-                            : Colors.white,
-                        size: 20,
                       ),
-                    const SizedBox(width: 8),
-                    Text(
-                      app.isGenerating ? 'Creating…' : 'Create Story',
-                      style: TextStyle(
-                        color: app.activeProfile == null
-                            ? TColors.inkFaint
-                            : app.isGenerating
-                                ? TColors.teal
-                                : Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Personal, and doubles as the instruction — it tells the parent exactly
+  /// what to type without a paragraph of marketing copy.
+  Widget _buildGreeting(AppState app) {
+    final name = app.activeProfile?.alias;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RichText(
+          text: TextSpan(
+            style: const TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
+              height: 1.2,
+              letterSpacing: -0.4,
+              color: TColors.ink,
+            ),
+            children: name == null
+                ? const [TextSpan(text: 'What shall we make today?')]
+                : [
+                    const TextSpan(text: 'What did '),
+                    TextSpan(
+                      text: name,
+                      style: const TextStyle(color: TColors.tealDeep),
+                    ),
+                    const TextSpan(text: ' do today?'),
+                  ],
+          ),
+        ),
+        const SizedBox(height: 5),
+        const Text(
+          'Or pick an idea below — a story takes 5 minutes',
+          style: TextStyle(
+            fontSize: 12.5,
+            color: TColors.inkFaint,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A blank box makes parents freeze. These are the first tap for most
+  /// people, so they double as the product's tone of voice.
+  static const _starters = [
+    ('🐸', 'How frogs live'),
+    ('🚉', 'A ride on the MRT'),
+    ('🍲', 'Helping in the kitchen'),
+    ('🌧️', 'Why does it rain?'),
+    ('🦁', 'A brave little lion'),
+    ('🌙', 'Going to sleep'),
+  ];
+
+  Widget _buildStarterChips(AppState app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'TRY ONE OF THESE',
+          style: TextStyle(
+            fontSize: 10,
+            letterSpacing: 1.1,
+            fontWeight: FontWeight.w800,
+            color: TColors.inkFaint,
+          ),
+        ),
+        const SizedBox(height: 9),
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: _starters.map((s) {
+            return GestureDetector(
+              onTap: app.isGenerating
+                  ? null
+                  : () {
+                      setState(() {
+                        _textController.text = s.$2;
+                        _textController.selection = TextSelection.collapsed(
+                            offset: _textController.text.length);
+                      });
+                    },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFEDE8DA)),
+                  boxShadow: TShadows.card,
+                ),
+                child: Text(
+                  '${s.$1}  ${s.$2}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: TColors.inkSoft,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// Small header for a preview row, with a tap-through to the full screen.
+  Widget _rowHeader(String title, String action, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: TColors.ink,
+            ),
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: onTap,
+            child: Row(
+              children: [
+                Text(
+                  action,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: TColors.tealDeep,
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    size: 17, color: TColors.tealDeep),
+              ],
             ),
           ),
         ],
@@ -783,9 +1014,171 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     );
   }
 
-  Widget _captureChip({
+  /// The child's own bookshelf — the thing that brings a parent back.
+  Widget _buildLibraryRow(AppState app) {
+    if (_recentStories.isEmpty) return const SizedBox.shrink();
+    const covers = [
+      TGradients.mint,
+      TGradients.gold,
+      TGradients.coral,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _rowHeader('📚 Story library', 'See all', () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StoriesLibraryScreen()),
+          );
+        }),
+        SizedBox(
+          height: 118,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            itemCount: _recentStories.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) {
+              final s = _recentStories[i];
+              return GestureDetector(
+                onTap: () async {
+                  final ok = await app.loadApprovedStory(s.id);
+                  if (!mounted) return;
+                  if (ok) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ChildSessionScreen()),
+                    );
+                  }
+                },
+                child: SizedBox(
+                  width: 86,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 80,
+                        decoration: BoxDecoration(
+                          gradient: s.coverIllustrationUrl.isEmpty
+                              ? covers[i % covers.length]
+                              : null,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: TShadows.card,
+                          image: s.coverIllustrationUrl.isEmpty
+                              ? null
+                              : DecorationImage(
+                                  image:
+                                      NetworkImage(s.coverIllustrationUrl),
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                        alignment: Alignment.center,
+                        child: s.coverIllustrationUrl.isEmpty
+                            ? const Text('📖',
+                                style: TextStyle(fontSize: 28))
+                            : null,
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        s.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          height: 1.25,
+                          color: TColors.inkSoft,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// What's on nearby — mother tongue lives outside the app too.
+  Widget _buildEventsRow(AppState app) {
+    if (_nearbyEvents.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _rowHeader('🎪 Near you', 'See all', () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CommunityEventsScreen()),
+          );
+        }),
+        SizedBox(
+          height: 92,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            itemCount: _nearbyEvents.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) {
+              final e = _nearbyEvents[i];
+              return Container(
+                width: 168,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFEDE8DA)),
+                  boxShadow: TShadows.card,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      [e.date, e.time].where((t) => t.isNotEmpty).join(' · '),
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                        color: TColors.coral,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      e.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        height: 1.25,
+                        color: TColors.ink,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      e.venue,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: TColors.inkFaint,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _toolIcon({
     required String emoji,
-    required String label,
     required bool active,
     VoidCallback? onTap,
   }) {
@@ -793,28 +1186,92 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
-          color: active ? TColors.coral : const Color(0xFFF0EDE1),
-          borderRadius: BorderRadius.circular(16),
+          color: active ? TColors.coral : const Color(0xFFF3EFE3),
+          shape: BoxShape.circle,
           boxShadow: active ? TShadows.glowCoral : null,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        alignment: Alignment.center,
+        child: Text(emoji, style: const TextStyle(fontSize: 16)),
+      ),
+    );
+  }
+
+  void _openLanguagePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 16)),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: active ? Colors.white : TColors.inkSoft,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3DCCB),
+                  borderRadius: BorderRadius.circular(3),
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            const Text(
+              'Story language',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800, color: TColors.ink),
+            ),
+            const SizedBox(height: 12),
+            ..._locales.map((l) {
+              final selected = _selectedLocale == l.$1;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _selectedLocale = l.$1);
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: selected ? TColors.mist : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color:
+                            selected ? TColors.teal : const Color(0xFFEDE8DA),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(l.$2,
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: TColors.ink)),
+                        const SizedBox(width: 8),
+                        Text(l.$3,
+                            style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: TColors.inkFaint)),
+                        const Spacer(),
+                        if (selected)
+                          const Icon(Icons.check_circle_rounded,
+                              color: TColors.teal, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
           ],
         ),
       ),
@@ -1108,29 +1565,17 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     setState(() => _navIndex = i);
   }
 
-  // ── Actions ─────────────────────────────────────────────────────────
-
-  String _localeName(String locale) {
-    switch (locale) {
-      case 'ta-SG':
-        return 'Tamil';
-      case 'zh-SG':
-        return 'Chinese';
-      case 'ms-SG':
-        return 'Malay';
-      default:
-        return locale;
-    }
-  }
-
   /// Sprint 0 — Classic vs New (beta) story engine. New routes to the
   /// book-first flow; Classic is unchanged. Lets us A/B and demo before/after.
-  Widget _engineToggle() {
+  Widget _engineToggle({VoidCallback? onChanged}) {
     Widget opt(String value, String label, String sub) {
       final on = _selectedEngine == value;
       return Expanded(
         child: GestureDetector(
-          onTap: () => setState(() => _selectedEngine = value),
+          onTap: () {
+            setState(() => _selectedEngine = value);
+            onChanged?.call();
+          },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(vertical: 9),
