@@ -502,6 +502,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Load a built-in sample story directly into [approvedStory] — no API
+  /// call, no generation wait. The child session falls back to parent-read
+  /// mode since sample stories have no audio manifest.
+  void loadSampleStory(ApprovedStory story) {
+    _approvedStory = story;
+    notifyListeners();
+  }
+
   /// Load an already-approved package into [approvedStory] — used by the
   /// story library replay and by review-screen approvals that bypass
   /// [approvePackage].

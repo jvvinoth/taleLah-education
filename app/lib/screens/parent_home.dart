@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../data/sample_stories.dart';
+import '../models/story_package.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/live_mic.dart';
@@ -49,6 +51,21 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     ('ms-SG', 'Melayu', 'Malay'),
   ];
 
+  // Track whether the text field has content so prompt chips can
+  // hide/show without rebuilding on every keystroke.
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController.addListener(() {
+      final hasText = _textController.text.isNotEmpty;
+      if (hasText != _hasText) {
+        setState(() => _hasText = hasText);
+      }
+    });
+  }
+
   @override
   void dispose() {
     _momentMic.dispose();
@@ -80,6 +97,13 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                   const SizedBox(height: 24),
                   _buildHeroCard(app),
                   const SizedBox(height: 24),
+                  // "Try a Sample" row — visible for first-time users
+                  // who have no personal stories and no active session yet.
+                  if (app.approvedStory == null &&
+                      app.latestPackage == null) ...[
+                    _buildTrySampleRow(app),
+                    const SizedBox(height: 24),
+                  ],
                   _buildSectionTitle('Capture a Moment', 'Turn today into a story'),
                   const SizedBox(height: 12),
                   _buildMomentCapture(app),
@@ -468,6 +492,27 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             _childPill(app)
           else
             _addChildButton(app),
+          // Secondary CTA for users who haven't set up a profile yet.
+          if (app.activeProfile == null) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const StoriesLibraryScreen()),
+              ),
+              child: Text(
+                'Or try a sample story first — no setup needed',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                  decorationColor: Colors.white.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -602,6 +647,11 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Quick-start prompt chips — hidden once the parent starts typing.
+          if (!_hasText) ...[
+            _buildPromptChips(),
+            const SizedBox(height: 12),
+          ],
           // Text field
           Container(
             decoration: BoxDecoration(
@@ -1006,6 +1056,175 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
         text,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: fg),
       ),
+    );
+  }
+
+  // ── Try a Sample row ────────────────────────────────────────────────
+
+  Widget _buildTrySampleRow(AppState app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Or try a sample story',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: TColors.inkSoft,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'No setup needed — tap and read right away',
+          style: TextStyle(
+            fontSize: 11,
+            color: TColors.inkFaint,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _sampleChip(
+                app,
+                sampleStories['ta-SG']!,
+                emoji: '🕊️',
+                label: 'Tamil',
+                subtitle: 'புறா சாகசம்',
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6C5CE7), Color(0xFF8B7CF6)],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _sampleChip(
+                app,
+                sampleStories['zh-SG']!,
+                emoji: '🛝',
+                label: 'Chinese',
+                subtitle: '游乐场探险',
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFE17055), Color(0xFFFDCB6E)],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _sampleChip(
+                app,
+                sampleStories['ms-SG']!,
+                emoji: '👵',
+                label: 'Malay',
+                subtitle: 'Masak Bersama Nenek',
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF00B894), Color(0xFF55EFC4)],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _sampleChip(
+    AppState app,
+    ApprovedStory story, {
+    required String emoji,
+    required String label,
+    required String subtitle,
+    required Gradient gradient,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        app.loadSampleStory(story);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ChildSessionScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: TShadows.card,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 24)),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Prompt chips ────────────────────────────────────────────────────
+
+  static const _promptSuggestions = [
+    ('Played with blocks', 'My child played with blocks and built a tall tower'),
+    ('Went to the park', 'We went to the park and played on the swings'),
+    ('Had a snack together', 'We had a snack together and talked about the day'),
+    ('Read a book', 'We read a book together before bedtime'),
+  ];
+
+  Widget _buildPromptChips() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _promptSuggestions.map((pair) {
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              _textController.text = pair.$2;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0EDE1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              pair.$1,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: TColors.inkSoft,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
