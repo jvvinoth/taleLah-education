@@ -32,8 +32,10 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   final LiveMic _momentMic = LiveMic();
   final Earcons _earcons = Earcons();
   bool _voiceOverlayVisible = false;
-  // Sprint 0 — story engine: 'classic' (untouched) or 'new' (book-first beta).
-  String _selectedEngine = 'classic';
+  // Story engine: 'new' (book-first — outline in seconds, pages stream in) is
+  // the default; 'classic' stays available behind the ⚙ sheet for A/B. This
+  // resets on every web reload, so the default IS the product experience.
+  String _selectedEngine = 'new';
 
   // Between the mic closing and the transcript arriving, this is true so
   // the parent sees work happening rather than a dead text box.

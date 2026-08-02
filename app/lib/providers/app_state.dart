@@ -364,8 +364,9 @@ class AppState extends ChangeNotifier {
             _generationStatus = 'Page $ready of $total ready';
           }
         } else if (event.type == 'engine_fallback') {
-          // The book engine bailed to the slow classic path — say so instead
-          // of letting it look like the new flow is just slow.
+          // The book engine bailed to the slow classic path — SAY so in the
+          // progress bar instead of letting it look like New is just slow.
+          _generationStatus = '⚠️ Using classic storyteller (slower)';
           debugPrint('[TL] engine fell back to classic: ${event.error}');
         } else if (event.type == 'needs_clarification') {
           // F3 — pipeline paused for one parent answer
@@ -510,6 +511,8 @@ class AppState extends ChangeNotifier {
 
   String _agentLabel(String agent) {
     switch (agent) {
+      case 'book_author':
+        return '✍️ Designing your book';
       case 'moment_lens':
         return '🔍 Understanding moment';
       case 'learning_planner':
