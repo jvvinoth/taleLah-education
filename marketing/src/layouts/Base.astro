@@ -29,7 +29,9 @@ const canonical = new URL(localePath(locale), site).href;
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Mina herself, rather than a flat approximation of her. -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     {
       LOCALES.map((l) => (
         <link
