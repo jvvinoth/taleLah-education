@@ -215,6 +215,18 @@
   .watch li{list-style:none;font-size:21px;color:#B9CBC7;display:flex;gap:13px;align-items:baseline;}
   .watch li b{color:#fff;font-weight:800;}
   .watch .k{font-family:var(--mono);font-size:13px;color:var(--gold);flex:0 0 auto;}
+  /* Live-app CTA on the demo slide — a real link, so it works from the
+     projector laptop or anyone's phone on deck.talelah.com. */
+  .applink{display:inline-flex;align-items:center;gap:14px;margin-top:34px;text-decoration:none;
+    align-self:flex-start;/* in a flex column it would otherwise stretch full-width */
+    background:var(--gold);color:var(--navy);border-radius:14px;padding:15px 22px;
+    box-shadow:0 10px 26px -10px rgba(242,184,67,.65);transition:transform .16s ease,box-shadow .16s ease;}
+  .applink span{display:flex;flex-direction:column;line-height:1.2;}
+  .applink span b{font-family:var(--mono);font-size:12.5px;font-weight:600;opacity:.72;margin-top:3px;}
+  .applink>span{font-size:19px;font-weight:800;letter-spacing:-.02em;}
+  .applink:hover,.applink:focus-visible{transform:translateY(-2px);
+    box-shadow:0 14px 32px -10px rgba(242,184,67,.8);outline:none;}
+  .applink:focus-visible{box-shadow:0 0 0 3px #fff,0 14px 32px -10px rgba(242,184,67,.8);}
   .steps3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;flex:1;align-content:center;}
   .s3{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;text-align:center;}
   .s3.g{border-color:var(--gold);}
@@ -272,9 +284,11 @@
           <div style="font-size:29px;margin-top:20px;line-height:1.3;">
             Everyday moments.<br><b class="tl">Mother-tongue magic.</b>
           </div>
+          <!-- Qoder + Alibaba already sit in the rail on every slide, so the
+               title badges do the job the rail can't: place the product. -->
           <div style="display:flex;gap:12px;margin-top:34px;">
-            <span class="badge"><i data-ic="wrench" data-s="16"></i>Built with Qoder</span>
-            <span class="badge"><i data-ic="cloud" data-s="16"></i>Alibaba Cloud Qwen</span>
+            <span class="badge"><i data-flag="15"></i>Made for Singapore families</span>
+            <span class="badge"><i data-ic="globe" data-s="16"></i>中文 · Melayu · தமிழ்</span>
           </div>
         </div>
         <div id="minaBig"></div>
@@ -291,7 +305,7 @@
 
     <!-- 2 · THREE HOMES -->
     <section class="slide" data-note="Open general. Three homes, three mother tongues, one identical evening. Let the audience find their own household in one of these three.">
-      <div class="eyebrow">Every evening in Singapore</div>
+      <div class="eyebrow" style="display:inline-flex;align-items:center;gap:9px;"><i data-flag="13"></i>Every evening in Singapore</div>
       <h3 style="margin-top:12px;">Three homes. Three mother tongues. <span class="cr">The same evening.</span></h3>
       <div class="homes">
         <div class="home z">
@@ -342,7 +356,7 @@
 
     <!-- 4 · STAT -->
     <section class="slide dark" data-note="Now the scale. This is the market. Same SingStat numbers as our website, so we never contradict ourselves.">
-      <div class="eyebrow">And it's every community</div>
+      <div class="eyebrow" style="display:inline-flex;align-items:center;gap:9px;"><i data-flag="13"></i>Singapore, every community</div>
       <h3 style="margin-top:12px;color:#fff;">Homes where English is spoken most often</h3>
       <div class="fill" style="display:flex;flex-direction:column;justify-content:center;">
         <div class="bars">
@@ -516,8 +530,13 @@
           <li><span class="k">02</span><span>The child <b>speaks a line</b> and the story answers</span></li>
           <li><span class="k">03</span><span>It ends by <b>handing the phone to the family</b></span></li>
         </ul>
+        <a class="applink" href="https://app.talelah.com" target="_blank" rel="noopener">
+          <i data-ic="smartphone" data-s="19"></i>
+          <span>Open the live app<b>app.talelah.com</b></span>
+          <i data-ic="arrowUpRight" data-s="17"></i>
+        </a>
       </div>
-      <div class="foot">talelah.com</div>
+      <div class="foot">Tap to launch — or run it from your own phone.</div>
     </section>
 
     <!-- 9 · DIFFERENTIATOR -->
@@ -629,14 +648,20 @@
 
     <!-- 14 · WHO FOR -->
     <section class="slide" data-note="Impact. All three official mother tongues, one engine. A fourth language is a spec file, not a rebuild.">
-      <div class="eyebrow">Who it's for</div>
-      <h3 style="margin-top:12px;">Singapore families with 4–8 year olds.</h3>
+      <div class="eyebrow" style="display:inline-flex;align-items:center;gap:9px;"><i data-flag="13"></i>Who it's for</div>
+      <h3 style="margin-top:12px;">Every Singaporean child learns a mother tongue at school.</h3>
+      <p class="lede" style="margin-top:10px;max-width:62ch;font-size:19px;">
+        It is national policy — and there are exactly three. TaleLah serves all of them
+        from one engine.
+      </p>
       <div class="langs">
         <div class="lang z"><div class="scr2">中文</div><div class="nm">Chinese</div><div class="m">Simplified characters with pinyin for the parent.</div></div>
         <div class="lang m"><div class="scr2">Melayu</div><div class="nm">Malay</div><div class="m">Everyday Bahasa, with meaning where it helps.</div></div>
         <div class="lang t"><div class="scr2">தமிழ்</div><div class="nm">Tamil</div><div class="m">Written natively, not translated from English.</div></div>
       </div>
-      <div class="foot" style="text-align:center;">A fourth language is a new spec file — not a rebuild.</div>
+      <div class="foot" style="display:flex;align-items:center;justify-content:center;gap:9px;">
+        <i data-flag="12"></i>Built in Singapore, for Singapore — a fourth language would be a new spec file, not a rebuild.
+      </div>
     </section>
 
     <!-- 15 · TEAM -->
@@ -670,11 +695,15 @@
       <div class="fill" style="display:flex;flex-direction:column;justify-content:center;">
         <h2 style="color:#fff;max-width:19ch;">Capture once, help everywhere.</h2>
         <h2 style="max-width:19ch;margin-top:12px;" class="gd">And bring the language home.</h2>
-        <div style="display:flex;gap:14px;margin-top:40px;">
-          <span class="badge" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;">
-            <i data-ic="globe" data-s="16"></i><b style="color:#fff">talelah.com</b></span>
-          <span class="badge" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;">
-            <i data-ic="wrench" data-s="16"></i><b style="color:#fff">Built with Qoder</b></span>
+        <div style="display:flex;gap:14px;margin-top:40px;align-items:center;">
+          <a class="applink" href="https://app.talelah.com" target="_blank" rel="noopener" style="margin-top:0;">
+            <i data-ic="smartphone" data-s="19"></i>
+            <span>Try it yourself<b>app.talelah.com</b></span>
+            <i data-ic="arrowUpRight" data-s="17"></i>
+          </a>
+          <a class="badge" href="https://talelah.com" target="_blank" rel="noopener"
+             style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;text-decoration:none;">
+            <i data-ic="globe" data-s="16"></i><b style="color:#fff">talelah.com</b></a>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:14px;">
@@ -683,7 +712,8 @@
           <img class="ini" src="img/sibi.jpg" alt="" style="margin-right:-8px;">
           <img class="ini" src="img/kavya.jpg" alt="">
         </div>
-        <span class="foot" style="margin-left:8px;">TaleLah · Alibaba Cloud &times; Qoder Hackathon Singapore 2026</span>
+        <span class="foot" style="margin-left:8px;display:inline-flex;align-items:center;gap:8px;">
+          <i data-flag="12"></i>Made in Singapore · Alibaba Cloud &times; Qoder Hackathon 2026</span>
       </div>
     </section>
 
@@ -733,8 +763,32 @@
     sprout:'<path d="M12 21v-8"/><path d="M12 13C12 9 9 6.5 4.5 6.5c0 4 2.5 6.5 7.5 6.5z"/><path d="M12 13c0-3.3 2.5-5.5 6-5.5 0 3.3-2.5 5.5-6 5.5z"/>',
     code:'<path d="M9 18l-6-6 6-6M15 6l6 6-6 6"/>',
     graduation:'<path d="M12 3.5 22 8l-10 4.5L2 8z"/><path d="M6 10v5.5c0 1.7 2.7 3 6 3s6-1.3 6-3V10"/>',
-    bird:'<ellipse cx="12" cy="14.5" rx="7" ry="6.5"/><circle cx="12" cy="7.5" r="4.5"/><path d="M16 7l3 1-3 1"/>'
+    bird:'<ellipse cx="12" cy="14.5" rx="7" ry="6.5"/><circle cx="12" cy="7.5" r="4.5"/><path d="M16 7l3 1-3 1"/>',
+    arrowUpRight:'<path d="M7.5 16.5 16.5 7.5"/><path d="M8.5 7.5h8v8"/>'
   };
+  /* Singapore flag — drawn to the official construction: 3:2, Pantone-032 red
+     over white, waxing crescent in the hoist and five stars in a pentagon. */
+  function flagSG(h, radius){
+    var star = 'M0,-1 L0.2245,-0.309 L0.951,-0.309 L0.363,0.118 L0.588,0.809 '
+             + 'L0,0.382 L-0.588,0.809 L-0.363,0.118 L-0.951,-0.309 L-0.2245,-0.309 Z';
+    var cx = 13.8, cy = 6, R = 2.35, pts = '';
+    for (var i = 0; i < 5; i++){
+      var a = (-90 + i * 72) * Math.PI / 180;
+      pts += '<path d="' + star + '" fill="#fff" transform="translate('
+           + (cx + R * Math.cos(a)).toFixed(2) + ',' + (cy + R * Math.sin(a)).toFixed(2)
+           + ') scale(0.78)"/>';
+    }
+    return '<svg width="' + (h * 1.5) + '" height="' + h + '" viewBox="0 0 36 24" '
+      + 'role="img" aria-label="Singapore" style="border-radius:' + (radius || 2) + 'px;'
+      + 'box-shadow:0 0 0 1px rgba(46,58,74,.12);display:block;flex:0 0 auto;">'
+      + '<rect width="36" height="12" fill="#ED2939"/>'
+      + '<rect y="12" width="36" height="12" fill="#fff"/>'
+      + '<circle cx="7.6" cy="6" r="4.6" fill="#fff"/>'
+      + '<circle cx="9.5" cy="6" r="4.1" fill="#ED2939"/>'
+      + pts + '</svg>';
+  }
+  window.flagSG = flagSG;
+
   function svg(name, size){
     var p = ICONS[name]; if(!p) return '';
     return '<svg class="ic" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" '
@@ -745,6 +799,12 @@
     var wrap = document.createElement('span');
     wrap.style.display = 'inline-flex';
     wrap.innerHTML = svg(el.getAttribute('data-ic'), el.getAttribute('data-s') || 16);
+    el.replaceWith(wrap);
+  });
+  document.querySelectorAll('[data-flag]').forEach(function(el){
+    var wrap = document.createElement('span');
+    wrap.style.display = 'inline-flex';
+    wrap.innerHTML = flagSG(+el.getAttribute('data-flag'), +(el.getAttribute('data-r') || 2));
     el.replaceWith(wrap);
   });
 
@@ -814,6 +874,8 @@
     }
   });
   document.getElementById('viewport').addEventListener('click', function(e){
+    // Never swallow a link tap — the demo slide's CTA must actually open.
+    if (e.target.closest && e.target.closest('a')) return;
     show(e.clientX < innerWidth / 2 ? i - 1 : i + 1);
   });
   addEventListener('resize', fit);

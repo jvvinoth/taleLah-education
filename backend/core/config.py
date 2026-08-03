@@ -87,15 +87,21 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24  # 24 hours
 
     # CORS
+    # Production lives on talelah.com subdomains; the regex in main.py also
+    # allows any *.talelah.com so a new subdomain never needs a code change.
     cors_origins: list[str] = [
+        "https://app.talelah.com",     # Flutter web app
+        "https://talelah.com",         # marketing site
+        "https://www.talelah.com",
+        "https://deck.talelah.com",    # pitch deck
         "http://localhost:3000",
         "http://localhost:8080",
         "https://jvvinoth.github.io",  # Flutter web on GitHub Pages
     ]
 
     # URLs
-    backend_url: str = "http://localhost:8000"
-    frontend_url: str = "http://localhost:3000"
+    backend_url: str = "https://api.talelah.com"
+    frontend_url: str = "https://app.talelah.com"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
