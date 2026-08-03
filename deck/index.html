@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>TaleLah — Pitch Deck</title>
-<meta name="description" content="TaleLah — Everyday moments. Mother-tongue magic. Qoder Hackathon Singapore 2026." />
+<meta name="description" content="TaleLah — Everyday moments. Mother-tongue magic. Alibaba Cloud x Qoder Hackathon Singapore 2026." />
 <link rel="icon" type="image/png" href="favicon.png" />
 <style>
   :root{
@@ -12,6 +12,7 @@
     --ink:#2E3A4A; --ink-2:#5D6B7A; --ink-3:#9AA7B2; --line:#E5DDCC;
     --teal:#2F9E97; --teal-deep:#1F7B75; --gold:#F2B843; --gold-deep:#A9741A;
     --coral:#EE7752; --navy:#1F2A35; --mist:#E0F0EE;
+    --qoder:#00B96B; --alibaba:#FF6A00;
     --sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Arial,sans-serif;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --tamil:"Tamil Sangam MN","Noto Sans Tamil",sans-serif;
@@ -21,15 +22,10 @@
   html,body{height:100%;overflow:hidden;background:#0C1319;}
   body{font-family:var(--sans);-webkit-font-smoothing:antialiased;}
 
-  /* The stage is a fixed 1280x720 canvas scaled to fit. Centring is done with
-     translate rather than grid/flex alignment: when an item is WIDER than its
-     container those clamp to start to avoid data loss, which pushed the scaled
-     stage off to the right on any window under 1280px. */
   #viewport{position:fixed;inset:0;overflow:hidden;}
   #stage{position:absolute;left:50%;top:50%;width:1280px;height:720px;
-    transform:translate(-50%,-50%) scale(var(--k,1));
-    transform-origin:center center;border-radius:6px;overflow:hidden;
-    box-shadow:0 30px 80px -30px rgba(0,0,0,.8);}
+    transform:translate(-50%,-50%) scale(var(--k,1));transform-origin:center center;
+    border-radius:6px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.8);}
 
   .slide{position:absolute;inset:0;background:var(--cream);color:var(--ink);
     padding:56px 72px;display:none;flex-direction:column;}
@@ -41,18 +37,28 @@
     @keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
   }
 
-  /* Persistent sponsor lockup — sits in the top padding of every slide, clear
-     of the eyebrow (top-left) and the presenter HUD (viewport bottom-right). */
-  .brandmark{position:absolute;top:22px;right:34px;display:flex;align-items:center;gap:9px;
-    font-family:var(--mono);font-size:11px;letter-spacing:.11em;text-transform:uppercase;
-    color:var(--ink-3);z-index:5;pointer-events:none;}
-  .brandmark b{font-weight:700;color:var(--ink-2);}
-  .brandmark .x{opacity:.45;}
-  .dark .brandmark{color:rgba(255,255,255,.4);}
-  .dark .brandmark b{color:rgba(255,255,255,.74);}
-  .tealbg .brandmark{color:rgba(255,255,255,.6);}
-  .tealbg .brandmark b{color:#fff;}
+  /* ---------- icons ---------- */
+  .ic{display:inline-block;vertical-align:-.14em;flex:0 0 auto;}
+  .icbox{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
 
+  /* ---------- sponsor lockup ---------- */
+  .brandmark{position:absolute;top:18px;right:34px;display:flex;align-items:center;gap:12px;z-index:5;pointer-events:none;}
+  .bmlabel{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);}
+  /* The official Qoder mark ships white-on-dark; we swap in an ink wordmark
+     variant on the cream slides so it stays legible on both grounds. */
+  .bmq{height:26px;width:auto;display:block;}
+  .bmq.on-dark{display:none;}
+  .dark .bmq.on-light,.tealbg .bmq.on-light{display:none;}
+  .dark .bmq.on-dark,.tealbg .bmq.on-dark{display:block;}
+  .bma{display:flex;align-items:center;gap:7px;}
+  .bma img{height:21px;width:21px;display:block;}
+  .bma span{font-size:14px;font-weight:800;letter-spacing:-.015em;color:#D2560A;}
+  .bmsep{width:1px;height:18px;background:var(--line);}
+  .dark .bmlabel,.tealbg .bmlabel{color:rgba(255,255,255,.45);}
+  .dark .bmsep,.tealbg .bmsep{background:rgba(255,255,255,.22);}
+  .dark .bma span,.tealbg .bma span{color:#FF9040;}
+
+  /* ---------- type ---------- */
   .eyebrow{font-family:var(--mono);font-size:13.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal-deep);font-weight:600;}
   .dark .eyebrow{color:var(--gold);} .tealbg .eyebrow{color:rgba(255,255,255,.82);}
   h1{font-size:88px;line-height:1.02;letter-spacing:-.035em;font-weight:800;text-wrap:balance;}
@@ -66,6 +72,11 @@
   .foot{font-family:var(--mono);font-size:12.5px;color:var(--ink-3);}
   .dark .foot{color:#7E9490;}
   .ta{font-family:var(--tamil);} .zh{font-family:var(--cjk);}
+  .wordmark{font-size:98px;font-weight:800;letter-spacing:-.045em;line-height:1;}
+
+  .badge{display:inline-flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;
+    padding:9px 15px;border-radius:9px;background:var(--card);border:1px solid var(--line);color:var(--ink);}
+  .badge .ic{color:var(--teal-deep);}
 
   /* ---------- phone mock ---------- */
   .phone{width:196px;flex:0 0 auto;background:#26313C;border-radius:24px;padding:6px;
@@ -75,8 +86,8 @@
     display:flex;flex-direction:column;padding:14px 11px 9px;gap:7px;position:relative;}
   .phone.lg .scr{height:390px;}
   .notch{position:absolute;top:5px;left:50%;transform:translateX(-50%);width:44px;height:9px;background:#26313C;border-radius:6px;}
-  .pbar{display:flex;align-items:center;gap:5px;}
-  .plogo{font-size:9.5px;font-weight:800;color:var(--ink);}
+  .pbar{display:flex;align-items:center;gap:4px;}
+  .plogo{font-size:9.5px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:3px;}
   .pkid{margin-left:auto;display:flex;align-items:center;gap:3px;background:#fff;border:1px solid var(--line);
     border-radius:12px;padding:2px 6px 2px 2px;font-size:7.5px;font-weight:700;}
   .pkid i{width:13px;height:13px;border-radius:50%;background:var(--gold);display:grid;place-items:center;
@@ -86,32 +97,35 @@
   .pbox{background:#fff;border:1.5px solid var(--teal);border-radius:11px;padding:8px 8px 6px;}
   .pbox .ph{font-size:7.5px;color:var(--ink-3);line-height:1.4;}
   .ptools{display:flex;align-items:center;gap:4px;margin-top:6px;padding-top:5px;border-top:1px solid var(--line);}
-  .ptools i{width:16px;height:16px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;font-style:normal;font-size:8px;}
+  .ptools .icbox{width:16px;height:16px;border-radius:50%;background:var(--sunk);color:var(--ink-2);}
   .plang{font-size:7px;font-weight:800;padding:3px 6px;border-radius:8px;background:var(--mist);color:var(--teal-deep);}
-  .pgo{margin-left:auto;font-size:7.5px;font-weight:800;color:#fff;background:var(--coral);border-radius:9px;padding:4px 8px;}
+  .pgo{margin-left:auto;font-size:7.5px;font-weight:800;color:#fff;background:var(--coral);border-radius:9px;
+    padding:4px 8px;display:flex;align-items:center;gap:3px;}
   .pchips{display:flex;flex-wrap:wrap;gap:3px;}
-  .pchip{font-size:6.5px;font-weight:700;padding:3px 6px;border-radius:8px;background:#fff;border:1px solid var(--line);color:var(--ink-2);}
+  .pchip{font-size:6.5px;font-weight:700;padding:3px 6px;border-radius:8px;background:#fff;border:1px solid var(--line);
+    color:var(--ink-2);display:flex;align-items:center;gap:3px;}
+  .pchip .ic{color:var(--teal-deep);}
   .plabel{font-family:var(--mono);font-size:5.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);}
   .prow{display:flex;gap:4px;}
-  .pbook{flex:1;border-radius:6px;height:34px;display:grid;place-items:center;font-size:15px;}
-  .pnav{margin-top:auto;display:flex;gap:2px;background:#fff;border-radius:11px;padding:4px 3px;box-shadow:0 2px 8px -4px rgba(46,58,74,.3);}
-  .pnav span{flex:1;text-align:center;font-size:8px;opacity:.4;}
-  .pnav span.on{opacity:1;}
-  /* review + child screens */
+  .pbook{flex:1;border-radius:6px;height:34px;display:grid;place-items:center;color:var(--teal-deep);}
+  .pnav{margin-top:auto;display:flex;gap:2px;background:#fff;border-radius:11px;padding:5px 3px;box-shadow:0 2px 8px -4px rgba(46,58,74,.3);}
+  .pnav span{flex:1;display:grid;place-items:center;color:var(--ink-3);}
+  .pnav span.on{color:var(--coral);}
   .pcard{background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 7px;}
   .pcard .t{font-size:7.5px;font-weight:800;}
   .pcard .s{font-size:6px;color:var(--ink-2);margin-top:2px;line-height:1.35;}
-  .pill{font-size:5.5px;font-weight:800;padding:2px 5px;border-radius:6px;letter-spacing:.04em;}
+  .pill{font-size:5.5px;font-weight:800;padding:2px 5px;border-radius:6px;letter-spacing:.04em;display:inline-flex;align-items:center;gap:3px;}
   .pill.ok{background:var(--mist);color:var(--teal-deep);}
   .pill.gen{background:#FCF0D5;color:var(--gold-deep);}
   .pscene{flex:1;border-radius:10px;background:linear-gradient(160deg,var(--mist),#EFEAdC);
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;text-align:center;padding:8px;}
-  .pscene .em{font-size:30px;}
+  .pscene .art{color:var(--teal-deep);opacity:.85;}
   .pscene .line{font-size:10px;font-weight:700;color:var(--ink);line-height:1.3;}
   .pscene .rom{font-family:var(--mono);font-size:6px;color:var(--teal-deep);}
-  .pmic{width:34px;height:34px;border-radius:50%;background:var(--coral);display:grid;place-items:center;font-size:15px;margin:0 auto;}
-  .pplay{width:38px;height:38px;border-radius:50%;background:var(--gold);display:grid;place-items:center;font-size:16px;margin:0 auto;}
-  .pcta{font-size:8px;font-weight:800;color:#fff;background:var(--teal);border-radius:9px;padding:6px;text-align:center;}
+  .pmic{width:34px;height:34px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;margin:0 auto;}
+  .pplay{width:38px;height:38px;border-radius:50%;background:var(--gold);color:var(--navy);display:grid;place-items:center;margin:0 auto;}
+  .pcta{font-size:8px;font-weight:800;color:#fff;background:var(--teal);border-radius:9px;padding:6px;text-align:center;
+    display:flex;align-items:center;justify-content:center;gap:4px;}
 
   /* ---------- three homes ---------- */
   .homes{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;flex:1;align-content:center;}
@@ -123,7 +137,6 @@
   .home .say{font-size:17px;font-weight:700;margin-top:14px;line-height:1.35;}
   .home .en{font-size:14px;color:var(--ink-2);margin-top:7px;line-height:1.4;}
 
-  /* ---------- gap columns ---------- */
   .cols2{display:grid;grid-template-columns:1fr 1fr;gap:44px;flex:1;align-items:center;}
   .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 28px;}
   .dark .panel{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.13);}
@@ -149,7 +162,7 @@
   .barrow.now .bval{color:var(--gold);}
   .delta{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:15px;color:var(--gold);margin-top:22px;}
 
-  /* ---------- flow (4 phones) ---------- */
+  /* ---------- flow ---------- */
   .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1;align-content:center;justify-items:center;}
   .fstep{display:flex;flex-direction:column;align-items:center;text-align:center;}
   .fstep .n{font-family:var(--mono);font-size:11px;color:var(--teal-deep);font-weight:700;letter-spacing:.1em;margin-top:12px;}
@@ -158,37 +171,36 @@
 
   /* ---------- agents ---------- */
   .pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
-  .ag{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 12px;display:flex;flex-direction:column;gap:6px;min-height:142px;}
-  .ag .i{width:26px;height:26px;border-radius:8px;background:var(--mist);color:var(--teal-deep);
-    display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:800;}
+  .ag{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 12px;display:flex;flex-direction:column;gap:6px;min-height:146px;}
+  .ag .i{width:28px;height:28px;border-radius:8px;background:var(--mist);color:var(--teal-deep);display:grid;place-items:center;}
   .ag.g .i{background:#FCF0D5;color:var(--gold-deep);}
   .ag .n{font-size:14px;font-weight:800;line-height:1.2;letter-spacing:-.015em;}
   .ag .m{font-size:12px;color:var(--ink-2);line-height:1.35;}
   .ag .tag{font-family:var(--mono);font-size:10px;color:var(--teal-deep);margin-top:auto;}
 
-  /* ---------- table ---------- */
   table{border-collapse:collapse;width:100%;font-size:16.5px;}
   th,td{text-align:left;padding:12px 15px;border-bottom:1px solid var(--line);}
   th{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);}
   td.cap2{font-weight:800;white-space:nowrap;}
   .ali{color:var(--teal-deep);font-weight:800;} .sar{color:var(--coral);font-weight:800;} .goo{color:var(--gold-deep);font-weight:800;}
 
-  /* ---------- swap ---------- */
   .swap3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;flex:1;align-content:center;}
   .sw{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:20px;}
   .sw .lbl{font-family:var(--mono);font-size:11.5px;color:#8DA39E;letter-spacing:.1em;text-transform:uppercase;}
   .sw .code{font-family:var(--mono);font-size:24px;font-weight:800;margin-top:7px;}
   .sw .line{font-size:16px;margin-top:12px;line-height:1.45;color:#EAF2EE;}
-  .gitline{font-family:var(--mono);font-size:14px;color:var(--gold);
-    background:rgba(242,184,67,.11);border:1px solid rgba(242,184,67,.3);border-radius:8px;padding:11px 15px;display:inline-block;}
+  .gitline{font-family:var(--mono);font-size:14px;color:var(--gold);display:inline-flex;align-items:center;gap:9px;
+    background:rgba(242,184,67,.11);border:1px solid rgba(242,184,67,.3);border-radius:8px;padding:11px 15px;}
 
-  /* ---------- team / langs ---------- */
-  .team{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;flex:1;align-content:center;}
-  .member{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:32px 26px;text-align:center;}
-  .member .av{width:82px;height:82px;border-radius:50%;margin:0 auto 16px;display:grid;place-items:center;
-    font-size:34px;font-weight:800;color:var(--navy);letter-spacing:-.02em;}
+  /* ---------- team ---------- */
+  .team{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;flex:1;align-content:center;}
+  .member{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px 26px;text-align:center;}
+  .member .av{width:118px;height:118px;border-radius:50%;margin:0 auto 18px;object-fit:cover;display:block;
+    border:3px solid #fff;box-shadow:0 6px 18px -6px rgba(46,58,74,.35);}
   .member .nm{font-size:25px;font-weight:800;letter-spacing:-.022em;}
-  .member .rl{font-family:var(--mono);font-size:13px;color:var(--teal-deep);margin-top:6px;letter-spacing:.06em;text-transform:uppercase;}
+  .member .rl{font-family:var(--mono);font-size:13px;margin-top:6px;letter-spacing:.06em;text-transform:uppercase;
+    display:inline-flex;align-items:center;gap:6px;}
+  .member.a .rl{color:var(--gold-deep);} .member.b .rl{color:var(--teal-deep);} .member.c .rl{color:var(--coral);}
 
   .langs{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;flex:1;align-content:center;}
   .lang{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px 24px;text-align:center;}
@@ -199,11 +211,6 @@
   .lang .nm{font-size:19px;font-weight:800;margin-top:14px;}
   .lang .m{font-size:14px;color:var(--ink-2);margin-top:6px;line-height:1.4;}
 
-  .badge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;
-    padding:8px 14px;border-radius:8px;background:var(--card);border:1px solid var(--line);color:var(--ink-2);}
-  .badge b{color:var(--ink);}
-  .ini{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:14px;font-weight:800;color:var(--navy);}
-  .wordmark{font-size:98px;font-weight:800;letter-spacing:-.045em;line-height:1;}
   .watch{display:grid;gap:13px;margin-top:26px;}
   .watch li{list-style:none;font-size:21px;color:#B9CBC7;display:flex;gap:13px;align-items:baseline;}
   .watch li b{color:#fff;font-weight:800;}
@@ -211,11 +218,15 @@
   .steps3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;flex:1;align-content:center;}
   .s3{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;text-align:center;}
   .s3.g{border-color:var(--gold);}
-  .s3 .em{font-size:40px;}
-  .s3 .n{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-3);margin-top:12px;}
+  .s3 .icwrap{width:52px;height:52px;border-radius:14px;background:var(--mist);color:var(--teal-deep);
+    display:grid;place-items:center;margin:0 auto;}
+  .s3.g .icwrap{background:#FCF0D5;color:var(--gold-deep);}
+  .s3 .n{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-3);margin-top:14px;}
   .s3.g .n{color:var(--gold-deep);}
   .s3 .t{font-size:22px;font-weight:800;margin-top:4px;letter-spacing:-.02em;}
   .s3 .m{font-size:13.5px;color:var(--ink-2);margin-top:6px;line-height:1.4;}
+  .ini{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff;
+    box-shadow:0 2px 8px -3px rgba(46,58,74,.5);}
 
   /* chrome */
   #bar{position:fixed;top:0;left:0;height:3px;background:var(--gold);z-index:60;transition:width .3s;}
@@ -240,7 +251,7 @@
   @media print{
     html,body{overflow:visible;background:#fff;}
     #viewport{position:static;display:block;}
-    #stage{transform:none!important;width:100%;height:auto;box-shadow:none;}
+    #stage{position:relative;left:auto;top:auto;transform:none!important;width:100%;height:auto;box-shadow:none;}
     .slide{display:flex!important;position:relative;page-break-after:always;height:720px;}
     #hud,#bar,#notes,#grid{display:none!important;}
   }
@@ -254,7 +265,7 @@
 
     <!-- 1 · TITLE -->
     <section class="slide" data-note="Hi — we're TaleLah. In the next few minutes: a problem in Singapore homes, what we built, and how Qoder let three of us build it in two weeks.">
-      <div class="eyebrow">Alibaba Cloud × Qoder Hackathon · Singapore 2026</div>
+      <div class="eyebrow">Alibaba Cloud &times; Qoder Hackathon · Singapore 2026</div>
       <div class="fill" style="display:grid;grid-template-columns:1fr auto;gap:40px;align-items:center;">
         <div>
           <div class="wordmark">TaleLah</div>
@@ -262,24 +273,24 @@
             Everyday moments.<br><b class="tl">Mother-tongue magic.</b>
           </div>
           <div style="display:flex;gap:12px;margin-top:34px;">
-            <span class="badge">🛠 <b>Built with Qoder</b></span>
-            <span class="badge">☁ <b>Alibaba Cloud Qwen</b></span>
+            <span class="badge"><i data-ic="wrench" data-s="16"></i>Built with Qoder</span>
+            <span class="badge"><i data-ic="cloud" data-s="16"></i>Alibaba Cloud Qwen</span>
           </div>
         </div>
         <div id="minaBig"></div>
       </div>
       <div style="display:flex;align-items:center;gap:14px;">
-        <div style="display:flex;gap:8px;">
-          <span class="ini" style="background:var(--gold)">V</span>
-          <span class="ini" style="background:var(--teal);color:#fff">S</span>
-          <span class="ini" style="background:var(--coral);color:#fff">K</span>
+        <div style="display:flex;gap:-4px;">
+          <img class="ini" src="img/vinoth.jpg" alt="" style="margin-right:-8px;">
+          <img class="ini" src="img/sibi.jpg" alt="" style="margin-right:-8px;">
+          <img class="ini" src="img/kavya.jpg" alt="">
         </div>
-        <span class="foot">Vinoth · Sibi · Kavya</span>
+        <span class="foot" style="margin-left:8px;">Vinoth · Sibi · Kavya</span>
       </div>
     </section>
 
-    <!-- 2 · THE EVENING (general, all three languages) -->
-    <section class="slide" data-note="Open general, not personal. Three homes, three mother tongues, one identical evening. Let the audience find their own household in one of these three.">
+    <!-- 2 · THREE HOMES -->
+    <section class="slide" data-note="Open general. Three homes, three mother tongues, one identical evening. Let the audience find their own household in one of these three.">
       <div class="eyebrow">Every evening in Singapore</div>
       <h3 style="margin-top:12px;">Three homes. Three mother tongues. <span class="cr">The same evening.</span></h3>
       <div class="homes">
@@ -302,7 +313,7 @@
     </section>
 
     <!-- 3 · THE GAP -->
-    <section class="slide" data-note="The insight most parents haven't noticed: the mother tongue stays at kitchen level while thinking vocabulary races ahead in English. Same in all three languages.">
+    <section class="slide" data-note="The insight most parents haven't noticed: the mother tongue stays at kitchen level while thinking vocabulary races ahead in English.">
       <div class="eyebrow">What's actually happening</div>
       <h3 style="margin-top:12px;">They can speak it. But they can't <span class="cr">think</span> in it.</h3>
       <div class="cols2" style="margin-top:4px;">
@@ -313,9 +324,7 @@
             <div class="word">air <span class="gl">water</span></div>
             <div class="word ta">வா <span class="gl">come</span></div>
           </div>
-          <p style="font-size:15px;color:var(--ink-2);margin-top:16px;line-height:1.45;">
-            Everyday, concrete, unchanging.
-          </p>
+          <p style="font-size:15px;color:var(--ink-2);margin-top:16px;line-height:1.45;">Everyday, concrete, unchanging.</p>
         </div>
         <div class="panel" style="border-color:var(--coral);">
           <div class="h">The words school gives them — in English</div>
@@ -348,7 +357,7 @@
             <span class="bval">58.1%</span>
           </div>
         </div>
-        <div class="delta">↑ +9.8 points in five years — and higher among young children</div>
+        <div class="delta"><i data-ic="trendUp" data-s="17"></i>+9.8 points in five years — and higher among young children</div>
       </div>
       <div class="foot">Singapore Dept. of Statistics · Census 2020 &amp; General Household Survey 2025</div>
     </section>
@@ -365,7 +374,7 @@
       </div>
     </section>
 
-    <!-- 6 · PRODUCT + real home screen -->
+    <!-- 6 · PRODUCT -->
     <section class="slide" data-note="One sentence, then show the actual home screen. Point at the prompt box — that's the whole product surface.">
       <div class="eyebrow">So we built</div>
       <div class="fill" style="display:grid;grid-template-columns:1fr auto;gap:52px;align-items:center;">
@@ -381,24 +390,36 @@
         </div>
         <div class="phone lg">
           <div class="scr"><div class="notch"></div>
-            <div class="pbar"><span class="plogo">🐦 TaleLah</span><span class="pkid"><i>W</i>Wei Ming ▾</span></div>
+            <div class="pbar"><span class="plogo"><i data-ic="bird" data-s="11"></i>TaleLah</span><span class="pkid"><i>W</i>Wei Ming</span></div>
             <div class="pgreet">What did <b>Wei Ming</b> do today?</div>
             <div class="pbox">
               <div class="ph">Tell me anything…<br>“He built an MRT out of blocks”<br>or “Explain how frogs live”</div>
-              <div class="ptools"><i>🎙</i><i>📷</i><span class="plang zh">中文</span><span class="pgo">✨ Create</span></div>
+              <div class="ptools">
+                <span class="icbox"><i data-ic="mic" data-s="9"></i></span>
+                <span class="icbox"><i data-ic="camera" data-s="9"></i></span>
+                <span class="plang zh">中文</span>
+                <span class="pgo"><i data-ic="sparkle" data-s="8"></i>Create</span>
+              </div>
             </div>
             <div class="plabel">Try one of these</div>
             <div class="pchips">
-              <span class="pchip">🐸 How frogs live</span><span class="pchip">🚉 A ride on the MRT</span>
-              <span class="pchip">🍲 Helping in the kitchen</span><span class="pchip">🌧️ Why does it rain?</span>
+              <span class="pchip"><i data-ic="leaf" data-s="7"></i>How frogs live</span>
+              <span class="pchip"><i data-ic="train" data-s="7"></i>A ride on the MRT</span>
+              <span class="pchip"><i data-ic="bowl" data-s="7"></i>Helping in the kitchen</span>
+              <span class="pchip"><i data-ic="rain" data-s="7"></i>Why does it rain?</span>
             </div>
-            <div class="plabel" style="margin-top:2px;">📚 Story library</div>
+            <div class="plabel" style="margin-top:2px;">Story library</div>
             <div class="prow">
-              <span class="pbook" style="background:var(--mist)">🐸</span>
-              <span class="pbook" style="background:#FCF0D5">🚂</span>
-              <span class="pbook" style="background:#FBE3DA">🌈</span>
+              <span class="pbook" style="background:var(--mist)"><i data-ic="book" data-s="15"></i></span>
+              <span class="pbook" style="background:#FCF0D5;color:var(--gold-deep)"><i data-ic="train" data-s="15"></i></span>
+              <span class="pbook" style="background:#FBE3DA;color:var(--coral)"><i data-ic="star" data-s="15"></i></span>
             </div>
-            <div class="pnav"><span class="on">🏠</span><span>📚</span><span>👨‍👩‍👧</span><span>🎪</span></div>
+            <div class="pnav">
+              <span class="on"><i data-ic="home" data-s="11"></i></span>
+              <span><i data-ic="book" data-s="11"></i></span>
+              <span><i data-ic="users" data-s="11"></i></span>
+              <span><i data-ic="calendar" data-s="11"></i></span>
+            </div>
           </div>
         </div>
       </div>
@@ -411,15 +432,28 @@
       <div class="flow">
         <div class="fstep">
           <div class="phone"><div class="scr"><div class="notch"></div>
-            <div class="pbar"><span class="plogo">🐦 TaleLah</span><span class="pkid"><i>W</i>Wei Ming</span></div>
+            <div class="pbar"><span class="plogo"><i data-ic="bird" data-s="11"></i>TaleLah</span><span class="pkid"><i>W</i>Wei Ming</span></div>
             <div class="pgreet">What did <b>Wei Ming</b> do today?</div>
             <div class="pbox">
               <div class="ph" style="color:var(--ink);font-weight:600;">He lined up his toy cars<br>from big to small.</div>
-              <div class="ptools"><i>🎙</i><i>📷</i><span class="plang zh">中文</span><span class="pgo">✨ Create</span></div>
+              <div class="ptools">
+                <span class="icbox"><i data-ic="mic" data-s="9"></i></span>
+                <span class="icbox"><i data-ic="camera" data-s="9"></i></span>
+                <span class="plang zh">中文</span>
+                <span class="pgo"><i data-ic="sparkle" data-s="8"></i>Create</span>
+              </div>
             </div>
             <div class="plabel">Try one of these</div>
-            <div class="pchips"><span class="pchip">🐸 How frogs live</span><span class="pchip">🌧️ Why does it rain?</span></div>
-            <div class="pnav"><span class="on">🏠</span><span>📚</span><span>👨‍👩‍👧</span><span>🎪</span></div>
+            <div class="pchips">
+              <span class="pchip"><i data-ic="leaf" data-s="7"></i>How frogs live</span>
+              <span class="pchip"><i data-ic="rain" data-s="7"></i>Why does it rain?</span>
+            </div>
+            <div class="pnav">
+              <span class="on"><i data-ic="home" data-s="11"></i></span>
+              <span><i data-ic="book" data-s="11"></i></span>
+              <span><i data-ic="users" data-s="11"></i></span>
+              <span><i data-ic="calendar" data-s="11"></i></span>
+            </div>
           </div></div>
           <div class="n">STEP 1</div><div class="t">Capture</div>
           <div class="m">Type, speak or snap a photo.</div>
@@ -427,12 +461,13 @@
 
         <div class="fstep">
           <div class="phone"><div class="scr"><div class="notch"></div>
-            <div class="pbar"><span class="plogo">← Review</span><span class="pill ok" style="margin-left:auto;">4 / 4 READY</span></div>
+            <div class="pbar"><span class="plogo"><i data-ic="chevLeft" data-s="10"></i>Review</span>
+              <span class="pill ok" style="margin-left:auto;"><i data-ic="check" data-s="7"></i>4 / 4 READY</span></div>
             <div class="pcard"><div class="t zh">小车排排队</div><div class="s">Page 1 · The little cars line up</div></div>
             <div class="pcard"><div class="t zh">谁最大？</div><div class="s">Page 2 · Which one is biggest?</div></div>
             <div class="pcard"><div class="t zh">说说看！</div><div class="s">Page 3 · Your turn to say it</div></div>
             <div class="pcard"><div class="t zh">一起数一数</div><div class="s">Page 4 · Count them together</div></div>
-            <div class="pcta" style="margin-top:auto;">✓ Approve &amp; give to child</div>
+            <div class="pcta" style="margin-top:auto;"><i data-ic="check" data-s="10"></i>Approve &amp; give to child</div>
           </div></div>
           <div class="n">STEP 2</div><div class="t">Approve</div>
           <div class="m">Nothing reaches the child unseen.</div>
@@ -440,13 +475,14 @@
 
         <div class="fstep">
           <div class="phone"><div class="scr"><div class="notch"></div>
-            <div class="pbar"><span class="plogo">🏠</span><span class="pill gen" style="margin-left:auto;">● LISTENING</span></div>
+            <div class="pbar"><span class="plogo"><i data-ic="home" data-s="10"></i></span>
+              <span class="pill gen" style="margin-left:auto;"><i data-ic="mic" data-s="7"></i>LISTENING</span></div>
             <div class="pscene">
-              <span class="em">🚗</span>
+              <span class="art"><i data-ic="car" data-s="34"></i></span>
               <span class="line zh">红色的车最大！</span>
               <span class="rom">hóng sè de chē zuì dà</span>
             </div>
-            <div class="pmic">🎙️</div>
+            <div class="pmic"><i data-ic="mic" data-s="15"></i></div>
             <div class="plabel" style="text-align:center;">tap &amp; talk to Mina</div>
           </div></div>
           <div class="n">STEP 3</div><div class="t">Child speaks</div>
@@ -455,13 +491,13 @@
 
         <div class="fstep">
           <div class="phone"><div class="scr" style="background:#FDF3E3;"><div class="notch"></div>
-            <div class="pbar"><span class="plogo">👨‍👩‍👧 Family</span></div>
+            <div class="pbar"><span class="plogo"><i data-ic="users" data-s="11"></i>Family</span></div>
             <div class="pscene" style="background:linear-gradient(160deg,#FCF0D5,#F6EEDD);">
               <span class="line zh">问问他：<br>哪一辆最小？</span>
               <span class="rom">ask which one is smallest</span>
-              <span class="pplay">▶</span>
+              <span class="pplay"><i data-ic="play" data-s="15"></i></span>
             </div>
-            <div class="pcta" style="background:var(--gold);color:var(--navy);">Hand the phone over</div>
+            <div class="pcta" style="background:var(--gold);color:var(--navy);"><i data-ic="handoff" data-s="10"></i>Hand the phone over</div>
           </div></div>
           <div class="n" style="color:var(--coral)">STEP 4</div><div class="t">Family takes over</div>
           <div class="m">The screen switches itself off.</div>
@@ -505,7 +541,7 @@
         <div class="phone lg">
           <div class="scr" style="background:#1F2A35;"><div class="notch"></div>
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center;">
-              <span style="font-size:38px;">🧭</span>
+              <span style="color:var(--gold)"><i data-ic="compass" data-s="34"></i></span>
               <span style="font-size:12px;font-weight:800;color:#fff;line-height:1.4;">Find something in the room<br>the same colour.</span>
               <span style="font-family:var(--mono);font-size:7px;color:#8DA39E;">the screen is waiting…</span>
               <span style="font-size:8px;font-weight:800;color:var(--navy);background:var(--gold);border-radius:9px;padding:6px 14px;margin-top:6px;">I'm back!</span>
@@ -521,15 +557,18 @@
       <h2 style="margin-top:12px;max-width:20ch;">We didn't write features. <span class="gd">We wrote specs.</span></h2>
       <div class="steps3">
         <div class="s3">
-          <div class="em">📄</div><div class="n">WRITTEN BY US</div><div class="t">The spec</div>
+          <div class="icwrap"><i data-ic="fileText" data-s="26"></i></div>
+          <div class="n">WRITTEN BY US</div><div class="t">The spec</div>
           <div class="m"><code>/specs</code> — six agents, three languages, every safety rule.</div>
         </div>
         <div class="s3 g">
-          <div class="em">⚡</div><div class="n">BUILT BY QODER</div><div class="t">The quest</div>
+          <div class="icwrap"><i data-ic="zap" data-s="26"></i></div>
+          <div class="n">BUILT BY QODER</div><div class="t">The quest</div>
           <div class="m">Quest Mode plans it, writes it and checks its own work.</div>
         </div>
         <div class="s3">
-          <div class="em">📱</div><div class="n">SHIPPED</div><div class="t">The product</div>
+          <div class="icwrap"><i data-ic="smartphone" data-s="26"></i></div>
+          <div class="n">SHIPPED</div><div class="t">The product</div>
           <div class="m">A running app three families have already used.</div>
         </div>
       </div>
@@ -542,12 +581,12 @@
       <h3 style="margin-top:12px;">Six agents, one pipeline.</h3>
       <div class="fill" style="display:flex;flex-direction:column;justify-content:center;">
         <div class="pipe">
-          <div class="ag"><span class="i">1</span><span class="n">Moment Lens</span><span class="m">Reads the photo or note.</span><span class="tag">Qwen-VL</span></div>
-          <div class="ag"><span class="i">2</span><span class="n">Learning Planner</span><span class="m">Picks one speaking goal.</span><span class="tag">Qwen</span></div>
-          <div class="ag"><span class="i">3</span><span class="n">Book Author</span><span class="m">Designs the whole book.</span><span class="tag">per-language</span></div>
-          <div class="ag"><span class="i">4</span><span class="n">Language Guardian</span><span class="m">Checks every native line.</span><span class="tag">/specs/lang</span></div>
-          <div class="ag g"><span class="i">5</span><span class="n">Family Voice</span><span class="m">Narrates &amp; hands off.</span><span class="tag">CosyVoice·Sarvam</span></div>
-          <div class="ag"><span class="i">6</span><span class="n">Growth Coach</span><span class="m">Remembers, never scores.</span><span class="tag">Qwen</span></div>
+          <div class="ag"><span class="i"><i data-ic="eye" data-s="15"></i></span><span class="n">Moment Lens</span><span class="m">Reads the photo or note.</span><span class="tag">Qwen-VL</span></div>
+          <div class="ag"><span class="i"><i data-ic="target" data-s="15"></i></span><span class="n">Learning Planner</span><span class="m">Picks one speaking goal.</span><span class="tag">Qwen</span></div>
+          <div class="ag"><span class="i"><i data-ic="book" data-s="15"></i></span><span class="n">Book Author</span><span class="m">Designs the whole book.</span><span class="tag">per-language</span></div>
+          <div class="ag"><span class="i"><i data-ic="shield" data-s="15"></i></span><span class="n">Language Guardian</span><span class="m">Checks every native line.</span><span class="tag">/specs/lang</span></div>
+          <div class="ag g"><span class="i"><i data-ic="volume" data-s="15"></i></span><span class="n">Family Voice</span><span class="m">Narrates &amp; hands off.</span><span class="tag">CosyVoice·Sarvam</span></div>
+          <div class="ag"><span class="i"><i data-ic="sprout" data-s="15"></i></span><span class="n">Growth Coach</span><span class="m">Remembers, never scores.</span><span class="tag">Qwen</span></div>
         </div>
         <p style="font-size:18px;color:var(--ink-2);margin-top:24px;text-align:center;">
           A <b style="color:var(--coral)">safety gate</b> sits between the pipeline and the child — nothing reaches child mode without passing it <em>and</em> the parent.
@@ -555,32 +594,23 @@
       </div>
     </section>
 
-    <!-- 12 · SWAP PROOF (all three) -->
+    <!-- 12 · SWAP PROOF -->
     <section class="slide dark" data-note="Strongest Qoder evidence. Record it beforehand. Emphasise: same moment, same schema, same code — only the spec file changed.">
       <div class="eyebrow">The proof</div>
       <h3 style="margin-top:12px;color:#fff;">One moment. One codebase. Three mother tongues.</h3>
       <div class="swap3">
-        <div class="sw">
-          <div class="lbl">Language pack</div>
-          <div class="code" style="color:var(--coral)">zh-SG</div>
-          <div class="line zh">弟弟坐在绿色的叶子上。</div>
-        </div>
-        <div class="sw">
-          <div class="lbl">Language pack</div>
-          <div class="code" style="color:var(--teal)">ms-SG</div>
-          <div class="line">Adik sedang duduk di atas daun hijau.</div>
-        </div>
-        <div class="sw">
-          <div class="lbl">Language pack</div>
-          <div class="code" style="color:var(--gold)">ta-SG</div>
-          <div class="line ta">தம்பி பச்சை இலையில் உட்கார்ந்திருக்கிறது.</div>
-        </div>
+        <div class="sw"><div class="lbl">Language pack</div><div class="code" style="color:var(--coral)">zh-SG</div>
+          <div class="line zh">弟弟坐在绿色的叶子上。</div></div>
+        <div class="sw"><div class="lbl">Language pack</div><div class="code" style="color:var(--teal)">ms-SG</div>
+          <div class="line">Adik sedang duduk di atas daun hijau.</div></div>
+        <div class="sw"><div class="lbl">Language pack</div><div class="code" style="color:var(--gold)">ta-SG</div>
+          <div class="line ta">தம்பி பச்சை இலையில் உட்கார்ந்திருக்கிறது.</div></div>
       </div>
-      <div><span class="gitline">$ git status → nothing to commit, working tree clean</span></div>
+      <div><span class="gitline"><i data-ic="check" data-s="15"></i>git status → nothing to commit, working tree clean</span></div>
     </section>
 
     <!-- 13 · MODELS -->
-    <section class="slide" data-note="Alibaba's models where they're strongest; specialists where they aren't. This shows engineering judgement, not just API calls.">
+    <section class="slide" data-note="Alibaba's models where they're strongest; specialists where they aren't. Shows engineering judgement, not just API calls.">
       <div class="eyebrow">Under the hood</div>
       <h3 style="margin-top:12px;">The best model for each language.</h3>
       <div class="fill" style="display:flex;align-items:center;">
@@ -610,20 +640,23 @@
     </section>
 
     <!-- 15 · TEAM -->
-    <section class="slide" data-note="Keep it short. Three people, two weeks, one working product.">
+    <section class="slide" data-note="Keep it short. Three people, two weeks, one working product — and a tutor who teaches these children every week.">
       <div class="eyebrow">The team</div>
       <div class="team">
-        <div class="member">
-          <div class="av" style="background:var(--gold)">V</div>
-          <div class="nm">Vinoth</div><div class="rl">Tech</div>
+        <div class="member a">
+          <img class="av" src="img/vinoth.jpg" alt="Vinoth">
+          <div class="nm">Vinoth</div>
+          <div class="rl"><i data-ic="code" data-s="14"></i>Tech</div>
         </div>
-        <div class="member">
-          <div class="av" style="background:var(--teal);color:#fff">S</div>
-          <div class="nm">Sibi</div><div class="rl">Tech</div>
+        <div class="member b">
+          <img class="av" src="img/sibi.jpg" alt="Sibi">
+          <div class="nm">Sibi</div>
+          <div class="rl"><i data-ic="code" data-s="14"></i>Tech</div>
         </div>
-        <div class="member">
-          <div class="av" style="background:var(--coral);color:#fff">K</div>
-          <div class="nm">Kavya</div><div class="rl">Tutor</div>
+        <div class="member c">
+          <img class="av" src="img/kavya.jpg" alt="Kavya">
+          <div class="nm">Kavya</div>
+          <div class="rl"><i data-ic="graduation" data-s="14"></i>Tutor</div>
         </div>
       </div>
       <p style="font-size:20px;color:var(--ink-2);text-align:center;">
@@ -638,17 +671,19 @@
         <h2 style="color:#fff;max-width:19ch;">Capture once, help everywhere.</h2>
         <h2 style="max-width:19ch;margin-top:12px;" class="gd">And bring the language home.</h2>
         <div style="display:flex;gap:14px;margin-top:40px;">
-          <span class="badge" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;">🌐 <b style="color:#fff">talelah.com</b></span>
-          <span class="badge" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;">🛠 <b style="color:#fff">Built with Qoder</b></span>
+          <span class="badge" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;">
+            <i data-ic="globe" data-s="16"></i><b style="color:#fff">talelah.com</b></span>
+          <span class="badge" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;">
+            <i data-ic="wrench" data-s="16"></i><b style="color:#fff">Built with Qoder</b></span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:14px;">
-        <div style="display:flex;gap:8px;">
-          <span class="ini" style="background:var(--gold)">V</span>
-          <span class="ini" style="background:var(--teal);color:#fff">S</span>
-          <span class="ini" style="background:var(--coral);color:#fff">K</span>
+        <div style="display:flex;">
+          <img class="ini" src="img/vinoth.jpg" alt="" style="margin-right:-8px;">
+          <img class="ini" src="img/sibi.jpg" alt="" style="margin-right:-8px;">
+          <img class="ini" src="img/kavya.jpg" alt="">
         </div>
-        <span class="foot">TaleLah · Alibaba Cloud × Qoder Hackathon Singapore 2026</span>
+        <span class="foot" style="margin-left:8px;">TaleLah · Alibaba Cloud &times; Qoder Hackathon Singapore 2026</span>
       </div>
     </section>
 
@@ -664,6 +699,55 @@
 
 <script>
 (function(){
+  /* ---------- icon set: 24x24, 2px stroke, rounded ---------- */
+  var ICONS = {
+    mic:'<path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4M8.5 22h7"/>',
+    camera:'<path d="M3 8a2 2 0 0 1 2-2h2.5l1.2-2h6.6l1.2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/>',
+    sparkle:'<path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M9.5 20v-5.5h5V20"/>',
+    book:'<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v16H5.5A1.5 1.5 0 0 0 4 20.5z"/><path d="M4 17.5A1.5 1.5 0 0 1 5.5 16H19"/>',
+    users:'<path d="M15.5 20v-1.6a3.4 3.4 0 0 0-3.4-3.4H6.9A3.4 3.4 0 0 0 3.5 18.4V20"/><circle cx="9.5" cy="7.5" r="3.4"/><path d="M20.5 20v-1.6a3.4 3.4 0 0 0-2.6-3.3"/><path d="M15.5 4.2a3.4 3.4 0 0 1 0 6.6"/>',
+    calendar:'<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    check:'<path d="M4.5 12.5 9.5 17.5 19.5 7"/>',
+    play:'<path d="M7 4.5 19 12 7 19.5z" fill="currentColor" stroke="none"/>',
+    compass:'<circle cx="12" cy="12" r="9"/><path d="M15.8 8.2 13.9 14 8.2 15.8 10 10z" fill="currentColor" stroke="none"/>',
+    fileText:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+    zap:'<path d="M13.5 2 5 13.5h6L10.5 22 19 10.5h-6z"/>',
+    smartphone:'<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+    globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>',
+    wrench:'<path d="M14.7 6.3a4.5 4.5 0 0 0 5.9 5.9L21 12a5.5 5.5 0 0 1-7.6 6.5L6.6 20a2.3 2.3 0 0 1-2.6-2.6L5.5 10.6A5.5 5.5 0 0 1 12 3z"/>',
+    cloud:'<path d="M17.5 18.5H7a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4.5 4.5 0 0 1-.5 9z"/>',
+    trendUp:'<path d="M3.5 17 10 10.5l3.5 3.5L20.5 7"/><path d="M15.5 7h5v5"/>',
+    chevLeft:'<path d="M15 5 8 12l7 7"/>',
+    leaf:'<path d="M4 20c0-8 5-13 16-13 0 9-5 13-11 13a5 5 0 0 1-5-5z"/><path d="M9.5 14.5C12 12 15 10.5 18 10"/>',
+    rain:'<path d="M17 14.5H7.5a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17.5 7a3.8 3.8 0 0 1-.5 7.5z"/><path d="M9 18l-1 2.5M13 18l-1 2.5M17 18l-1 2.5"/>',
+    train:'<rect x="5" y="3.5" width="14" height="12.5" rx="3"/><path d="M5 10h14M9 20l-2 2M15 20l2 2M7.5 20h9"/><circle cx="9" cy="13" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r=".9" fill="currentColor" stroke="none"/>',
+    bowl:'<path d="M3.5 11h17a8.5 8.5 0 0 1-17 0z"/><path d="M9 7.5c0-1.5 1.5-1.5 1.5-3M13.5 7.5c0-1.5 1.5-1.5 1.5-3"/>',
+    star:'<path d="M12 3.5l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.9l6-.8z"/>',
+    car:'<path d="M4.5 15.5h15M6 15.5V19a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1v-3.5"/><path d="M20.5 15.5V19a1 1 0 0 1-1 1H19a1 1 0 0 1-1-1v-3.5"/><path d="M3.5 15.5v-3.2l1.9-4.6A2 2 0 0 1 7.3 6.5h9.4a2 2 0 0 1 1.9 1.2l1.9 4.6v3.2z"/><circle cx="7.5" cy="12.5" r=".9" fill="currentColor" stroke="none"/><circle cx="16.5" cy="12.5" r=".9" fill="currentColor" stroke="none"/>',
+    handoff:'<path d="M9 11.5V5.2a1.7 1.7 0 0 1 3.4 0v5.3"/><path d="M12.4 10.5V7.8a1.7 1.7 0 0 1 3.4 0v2.7"/><path d="M15.8 11V9.3a1.7 1.7 0 0 1 3.4 0V15a6 6 0 0 1-6 6h-1.6a5 5 0 0 1-3.9-1.9l-3-3.8a1.7 1.7 0 0 1 2.6-2.1L9 15"/>',
+    eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+    shield:'<path d="M12 2.5 20 6v6c0 5-3.4 8.4-8 9.5-4.6-1.1-8-4.5-8-9.5V6z"/><path d="M9 12l2 2 4-4"/>',
+    volume:'<path d="M11 5 6.5 8.8H3.5v6.4h3L11 19z"/><path d="M15.5 9a4 4 0 0 1 0 6"/><path d="M18.2 6.4a7.7 7.7 0 0 1 0 11.2"/>',
+    sprout:'<path d="M12 21v-8"/><path d="M12 13C12 9 9 6.5 4.5 6.5c0 4 2.5 6.5 7.5 6.5z"/><path d="M12 13c0-3.3 2.5-5.5 6-5.5 0 3.3-2.5 5.5-6 5.5z"/>',
+    code:'<path d="M9 18l-6-6 6-6M15 6l6 6-6 6"/>',
+    graduation:'<path d="M12 3.5 22 8l-10 4.5L2 8z"/><path d="M6 10v5.5c0 1.7 2.7 3 6 3s6-1.3 6-3V10"/>',
+    bird:'<ellipse cx="12" cy="14.5" rx="7" ry="6.5"/><circle cx="12" cy="7.5" r="4.5"/><path d="M16 7l3 1-3 1"/>'
+  };
+  function svg(name, size){
+    var p = ICONS[name]; if(!p) return '';
+    return '<svg class="ic" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" '
+      + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+      + 'aria-hidden="true">' + p + '</svg>';
+  }
+  document.querySelectorAll('[data-ic]').forEach(function(el){
+    var wrap = document.createElement('span');
+    wrap.style.display = 'inline-flex';
+    wrap.innerHTML = svg(el.getAttribute('data-ic'), el.getAttribute('data-s') || 16);
+    el.replaceWith(wrap);
+  });
+
   var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
   var stage = document.getElementById('stage');
   var bar = document.getElementById('bar');
@@ -673,12 +757,18 @@
   var grid = document.getElementById('grid');
   var i = 0;
 
-  // Sponsor lockup on every slide — injected once so it can never drift out
-  // of sync between slides.
+  /* Sponsor lockup on every slide — the official Qoder logo (light + dark
+     variants) and the Alibaba Cloud mark set beside its name, since their
+     stacked lockup's wordmark is unreadable at rail size. */
   slides.forEach(function(s){
     var m = document.createElement('div');
     m.className = 'brandmark';
-    m.innerHTML = '<b>Qoder</b><span class="x">&times;</span><b>Alibaba Cloud</b>';
+    m.innerHTML =
+      '<span class="bmlabel">Built with</span>'
+      + '<img class="bmq on-light" src="img/qoder-onlight.svg" alt="Qoder">'
+      + '<img class="bmq on-dark" src="img/qoder.svg" alt="Qoder">'
+      + '<span class="bmsep"></span>'
+      + '<span class="bma"><img src="img/alibaba-mark.png" alt=""><span>Alibaba Cloud</span></span>';
     s.appendChild(m);
   });
 
