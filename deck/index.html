@@ -192,6 +192,48 @@
   .gitline{font-family:var(--mono);font-size:14px;color:var(--gold);display:inline-flex;align-items:center;gap:9px;
     background:rgba(242,184,67,.11);border:1px solid rgba(242,184,67,.3);border-radius:8px;padding:11px 15px;}
 
+  /* ---------- artefacts: real screenshots + terminal proof ---------- */
+  /* Slide 10 — the Qoder session itself, in a window chrome so it reads as
+     a captured artefact rather than a stock illustration. */
+  .artefact{display:grid;grid-template-columns:0.82fr 1.18fr;gap:26px;flex:1;align-items:center;}
+  .steps-v{display:flex;flex-direction:column;gap:12px;}
+  .sv{display:flex;gap:13px;align-items:flex-start;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:14px 16px;}
+  .sv.g{border-color:var(--gold);}
+  .sv .icwrap{width:36px;height:36px;min-width:36px;border-radius:10px;display:grid;place-items:center;
+    background:#E8F3F1;color:var(--teal-deep);}
+  .sv.g .icwrap{background:#FCF0D5;color:var(--gold-deep);}
+  .sv .n{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);}
+  .sv .t{font-weight:800;font-size:15.5px;margin-top:1px;}
+  .sv .m{font-size:12.5px;color:var(--ink-2);margin-top:3px;line-height:1.4;}
+  .shot{border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#fff;
+    box-shadow:0 18px 44px rgba(15,28,24,.16);}
+  .shot .bar{display:flex;align-items:center;gap:6px;padding:9px 12px;background:#F4F1EA;
+    border-bottom:1px solid var(--line);}
+  .shot .bar i{width:9px;height:9px;border-radius:50%;background:#D9D2C4;display:block;}
+  .shot .bar span{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-left:8px;}
+  .shot img{display:block;width:100%;}
+  .cap{font-family:var(--mono);font-size:11px;color:var(--ink-3);text-align:center;margin-top:9px;letter-spacing:.04em;}
+
+  /* Slide 12 — cards and their proof read as one block, centred together,
+     instead of the cards floating and the terminal stranded at the bottom. */
+  .proofwrap{flex:1;display:flex;flex-direction:column;justify-content:center;gap:22px;}
+  .proofwrap .swap3{flex:0 0 auto;}
+  /* Slide 12 — the grep/git output verbatim, because the claim is the output */
+  .term{background:rgba(0,0,0,.30);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+    padding:14px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.72;overflow:hidden;}
+  .term .p{color:#6FBFB6;}
+  .term .c{color:#EAF2EE;}
+  .term .o{color:#8DA39E;}
+  .term .ok{color:var(--gold);}
+
+  /* Slide 16 — QR on a light card so it stays scannable on the dark slide */
+  .qr{background:#fff;border-radius:14px;padding:11px;display:grid;place-items:center;
+    box-shadow:0 10px 30px rgba(0,0,0,.28);}
+  .qr svg{width:104px;height:104px;display:block;shape-rendering:crispEdges;}
+  .qrwrap{display:flex;flex-direction:column;align-items:center;gap:7px;}
+  .qrwrap .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8DA39E;}
+
   /* ---------- team ---------- */
   .team{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;flex:1;align-content:center;}
   .member{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px 26px;text-align:center;}
@@ -574,24 +616,32 @@
     <section class="slide" data-note="The 30% criterion. Show real artefacts — the specs folder, a Quest plan, the running app. Say 'we never wrote a feature ticket'.">
       <div class="eyebrow">How three of us built it in two weeks</div>
       <h2 style="margin-top:12px;max-width:20ch;">We didn't write features. <span class="gd">We wrote specs.</span></h2>
-      <div class="steps3">
-        <div class="s3">
-          <div class="icwrap"><i data-ic="fileText" data-s="26"></i></div>
-          <div class="n">WRITTEN BY US</div><div class="t">The spec</div>
-          <div class="m"><code>/specs</code> — six agents, three languages, every safety rule.</div>
+      <div class="artefact">
+        <div class="steps-v">
+          <div class="sv">
+            <div class="icwrap"><i data-ic="fileText" data-s="19"></i></div>
+            <div><div class="n">WRITTEN BY US</div><div class="t">The spec</div>
+              <div class="m"><code>/specs</code> — six agents, three languages, every safety rule.</div></div>
+          </div>
+          <div class="sv g">
+            <div class="icwrap"><i data-ic="zap" data-s="19"></i></div>
+            <div><div class="n">BUILT BY QODER</div><div class="t">The quest</div>
+              <div class="m">Quest Mode plans it, writes it and checks its own work.</div></div>
+          </div>
+          <div class="sv">
+            <div class="icwrap"><i data-ic="smartphone" data-s="19"></i></div>
+            <div><div class="n">SHIPPED</div><div class="t">The product</div>
+              <div class="m">A running app, live on three domains today.</div></div>
+          </div>
         </div>
-        <div class="s3 g">
-          <div class="icwrap"><i data-ic="zap" data-s="26"></i></div>
-          <div class="n">BUILT BY QODER</div><div class="t">The quest</div>
-          <div class="m">Quest Mode plans it, writes it and checks its own work.</div>
-        </div>
-        <div class="s3">
-          <div class="icwrap"><i data-ic="smartphone" data-s="26"></i></div>
-          <div class="n">SHIPPED</div><div class="t">The product</div>
-          <div class="m">A running app three families have already used.</div>
+        <div>
+          <div class="shot">
+            <div class="bar"><i></i><i></i><i></i><span>Qoder — Quest: “Analyze full scope” · 29 Jul 2026</span></div>
+            <img src="img/qoder-quest.jpg" alt="A Qoder Quest session auditing TaleLah's acceptance criteria and adding the missing route-level tests.">
+          </div>
+          <div class="cap">Real session — Quest Mode closing the AC-02 / AC-04 / AC-09 test gap</div>
         </div>
       </div>
-      <div class="foot" style="text-align:center;">Every agent, every language and every safety rule is a spec file — not code.</div>
     </section>
 
     <!-- 11 · AGENTS -->
@@ -617,15 +667,22 @@
     <section class="slide dark" data-note="Strongest Qoder evidence. Record it beforehand. Emphasise: same moment, same schema, same code — only the spec file changed.">
       <div class="eyebrow">The proof</div>
       <h3 style="margin-top:12px;color:#fff;">One moment. One codebase. Three mother tongues.</h3>
-      <div class="swap3">
+      <div class="proofwrap">
+        <div class="swap3">
         <div class="sw"><div class="lbl">Language pack</div><div class="code" style="color:var(--coral)">zh-SG</div>
           <div class="line zh">弟弟坐在绿色的叶子上。</div></div>
         <div class="sw"><div class="lbl">Language pack</div><div class="code" style="color:var(--teal)">ms-SG</div>
           <div class="line">Adik sedang duduk di atas daun hijau.</div></div>
         <div class="sw"><div class="lbl">Language pack</div><div class="code" style="color:var(--gold)">ta-SG</div>
           <div class="line ta">தம்பி பச்சை இலையில் உட்கார்ந்திருக்கிறது.</div></div>
+        </div>
+        <div class="term">
+        <div><span class="p">$</span> <span class="c">grep -rn "ta-SG\|zh-SG\|ms-SG" backend/agents backend/adapters backend/safety</span></div>
+        <div><span class="o">(no matches — exit 1) · every locale lives in backend/packs/*.json</span></div>
+        <div style="margin-top:5px;"><span class="p">$</span> <span class="c">git status --porcelain</span></div>
+          <div><span class="ok">(empty) — working tree clean, before and after the swap</span></div>
+        </div>
       </div>
-      <div><span class="gitline"><i data-ic="check" data-s="15"></i>git status → nothing to commit, working tree clean</span></div>
     </section>
 
     <!-- 13 · MODELS -->
@@ -704,6 +761,10 @@
           <a class="badge" href="https://talelah.com" target="_blank" rel="noopener"
              style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#EAF2EE;text-decoration:none;">
             <i data-ic="globe" data-s="16"></i><b style="color:#fff">talelah.com</b></a>
+          <div class="qrwrap" style="margin-left:10px;">
+            <div class="qr"><svg viewBox="0 0 29 29" class="segno"><path class="qrline" stroke="#0f1c18" d="M2 2.5h7m2 0h1m2 0h1m1 0h2m2 0h7m-25 1h1m5 0h1m1 0h6m1 0h1m2 0h1m5 0h1m-25 1h1m1 0h3m1 0h1m4 0h1m6 0h1m1 0h3m1 0h1m-25 1h1m1 0h3m1 0h1m3 0h2m2 0h1m3 0h1m1 0h3m1 0h1m-25 1h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h3m2 0h1m1 0h3m1 0h1m-25 1h1m5 0h1m3 0h4m1 0h2m1 0h1m5 0h1m-25 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-15 1h1m2 0h1m1 0h2m-17 1h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h1m1 0h2m1 0h1m3 0h1m2 0h1m-24 1h3m1 0h1m3 0h1m7 0h1m1 0h1m5 0h1m-25 1h1m2 0h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m1 0h3m1 0h3m-24 1h4m2 0h1m3 0h1m1 0h1m1 0h3m1 0h1m3 0h1m-24 1h1m2 0h1m1 0h2m4 0h1m1 0h1m1 0h4m2 0h1m1 0h2m-24 1h1m2 0h1m2 0h3m1 0h1m1 0h1m2 0h1m1 0h1m2 0h1m2 0h1m-25 1h1m1 0h2m2 0h2m5 0h2m3 0h2m2 0h3m-24 1h1m5 0h1m3 0h1m1 0h3m1 0h1m2 0h1m2 0h1m-24 1h1m1 0h1m3 0h1m5 0h2m2 0h6m-14 1h1m1 0h3m2 0h2m3 0h2m1 0h2m-25 1h7m2 0h5m1 0h2m1 0h1m1 0h2m1 0h2m-25 1h1m5 0h1m3 0h1m1 0h3m1 0h1m3 0h2m2 0h1m-25 1h1m1 0h3m1 0h1m1 0h1m2 0h3m2 0h6m1 0h2m-25 1h1m1 0h3m1 0h1m4 0h1m3 0h1m1 0h1m1 0h4m-23 1h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m2 0h2m3 0h1m3 0h1m-25 1h1m5 0h1m2 0h1m1 0h1m1 0h2m1 0h1m1 0h1m1 0h2m1 0h1m-24 1h7m1 0h1m1 0h1m1 0h1m1 0h3m2 0h1m3 0h2"/></svg></div>
+            <div class="lbl">Scan to open</div>
+          </div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:14px;">
