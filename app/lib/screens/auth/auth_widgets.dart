@@ -69,12 +69,50 @@ class AuthScaffold extends StatelessWidget {
                       children: children,
                     ),
                   ),
+                  const SizedBox(height: 22),
+                  const _MadeInSingapore(),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The sign-off under every auth card. Quiet on purpose — it should read as
+/// a maker's note, not a marketing line. The heart is drawn rather than an
+/// emoji so it renders the same on every browser and platform.
+class _MadeInSingapore extends StatelessWidget {
+  const _MadeInSingapore();
+
+  @override
+  Widget build(BuildContext context) {
+    const label = TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w600,
+      color: TColors.inkFaint,
+      height: 1.4,
+    );
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Text('Made with ', style: label),
+            Icon(Icons.favorite_rounded, size: 12.5, color: TColors.coral),
+            Text(' in Singapore', style: label),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'for families keeping their mother tongue at home',
+          textAlign: TextAlign.center,
+          style: label.copyWith(fontSize: 11.5, color: TColors.inkFaint),
+        ),
+      ],
     );
   }
 }
