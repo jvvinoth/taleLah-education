@@ -2253,6 +2253,10 @@ async def health():
         "persistence": "neon" if persistence.enabled else "memory-only",
         # iPhone photos are HEIC; without this the server can't open them.
         "photo_heic_support": _heic_support(),
+        # Whether ADMIN_TOKEN reached this process — the reseed endpoint 404s
+        # without it, which is indistinguishable from "not deployed yet".
+        # Boolean only: the value itself is never exposed.
+        "admin_reseed_enabled": bool(settings.admin_token),
     }
 
 
