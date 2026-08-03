@@ -383,6 +383,10 @@ class AppState extends ChangeNotifier {
 
       // Pipeline reported failure over SSE — surface it, never end silent.
       if (pipelineError.isNotEmpty) {
+        // The outline may already have been published so the parent could start
+        // reading. A later failure means that package is unusable, so retract
+        // it rather than leaving a "Story Ready" card pointing at a dead story.
+        if (_latestPackage?.id == packageId) _latestPackage = null;
         throw ApiException(500, pipelineError);
       }
 

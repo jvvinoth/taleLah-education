@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 # A room mission is a physical off-screen task for a 4-8 year old, so the bar
 # is deliberately conservative: anything sharp, hot, electrical, chokeable,
 # height-related, water-related, or that sends the child out of the room.
+# Page-count bounds for an approved book. Kept in one place so the outline
+# prompt, the mapper and this gate can never drift apart again.
+MIN_PAGES = 3
+MAX_PAGES = 6
+
 MISSION_REJECT_KEYWORDS = [
     # Leaving the safe indoor space
     "leave the home", "leave the house", "go outside", "outdoors",
@@ -170,8 +175,15 @@ class SafetyGate:
         # 4. Must have required fields
         if not package.story.scenes:
             failures.append("Story has no scenes")
-        if len(package.story.scenes) != 4:
-            failures.append(f"Story must have exactly 4 scenes, has {len(package.story.scenes)}")
+        # A picture book is 3-6 pages. The classic pipeline always writes 4, but
+        # the book engine plans 4-6 beats and our seeded library is 5 pages —
+        # pinning this to exactly 4 silently rejected every longer book at the
+        # very last step, after the story had already been written.
+        if not (MIN_PAGES <= len(package.story.scenes) <= MAX_PAGES):
+            failures.append(
+                f"Story must have {MIN_PAGES}-{MAX_PAGES} pages, "
+                f"has {len(package.story.scenes)}"
+            )
         if not package.learning_plan:
             failures.append("Missing learning plan")
         if package.learning_plan and len(package.learning_plan.target_words) not in range(3, 6):
