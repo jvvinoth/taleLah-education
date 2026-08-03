@@ -2,6 +2,7 @@
 // Final CTA box + footer.
 import MinaLogo from './MinaLogo.astro';
 import type { SiteContent } from '../i18n';
+import { APP_URL } from '../config';
 interface Props { t: SiteContent }
 const { t } = Astro.props;
 ---
@@ -13,7 +14,9 @@ const { t } = Astro.props;
       <h2 style="margin-top:16px">{t.finalCta.title}</h2>
       <p>{t.finalCta.body}</p>
       <div class="cta-row" style="justify-content:center;margin-top:32px">
-        <a href="#" class="btn coral lg">{t.finalCta.ctaPrimary}</a>
+        <a href={APP_URL} target="_blank" rel="noopener" class="btn coral lg">
+          {t.finalCta.ctaPrimary}
+        </a>
         <a href="#how" class="btn ghost lg">{t.finalCta.ctaSecondary}</a>
       </div>
     </div>

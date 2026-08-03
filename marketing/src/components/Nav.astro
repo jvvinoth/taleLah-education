@@ -2,6 +2,7 @@
 // Sticky nav — brand, anchors, always-visible language pills, CTA.
 import MinaLogo from './MinaLogo.astro';
 import { LOCALES, localePath, type Locale, type SiteContent } from '../i18n';
+import { APP_URL } from '../config';
 
 interface Props {
   locale: Locale;
@@ -34,7 +35,7 @@ const { locale, t } = Astro.props;
           ))
         }
       </div>
-      <a href="#try" class="btn">{t.nav.cta}</a>
+      <a href={APP_URL} target="_blank" rel="noopener" class="btn">{t.nav.cta}</a>
     </div>
   </div>
 </nav>

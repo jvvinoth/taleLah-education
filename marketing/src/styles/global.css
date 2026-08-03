@@ -85,6 +85,11 @@ nav{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--cream) 8
 .navlinks a.btn{color:#fff;}
 .navlinks a.btn:hover{color:#fff;}
 @media(max-width:840px){.navlinks > a:not(.btn){display:none;}}
+/* Logo + language pills + CTA need ~525px of row; below that the CTA was
+   pushed off-screen entirely and dragged a horizontal scrollbar onto the
+   whole page. The hero's Try Now is visible without scrolling on mobile,
+   so dropping the duplicate here costs nothing. */
+@media(max-width:660px){.navlinks > a.btn{display:none;}}
 
 /* sticker buttons — chunky border + hard offset shadow */
 .btn{display:inline-flex;align-items:center;gap:8px;background:var(--teal);color:#fff;padding:11px 20px;border-radius:14px;

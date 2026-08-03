@@ -2,6 +2,7 @@
 // Hero — headline + CTA + phone mockup showing the locale's story language.
 import MinaLogo from './MinaLogo.astro';
 import type { SiteContent } from '../i18n';
+import { APP_URL } from '../config';
 
 interface Props {
   t: SiteContent;
@@ -20,7 +21,9 @@ const m = t.mock;
         </h1>
         <p class="lede" set:html={t.hero.lede} />
         <div class="cta-row">
-          <a href="#try" class="btn coral lg">{t.hero.ctaPrimary}</a>
+          <a href={APP_URL} target="_blank" rel="noopener" class="btn coral lg">
+            {t.hero.ctaPrimary}
+          </a>
           <a href="#how" class="btn ghost lg">{t.hero.ctaSecondary}</a>
         </div>
         <div class="trust-row">
