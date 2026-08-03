@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     max_text_length: int = 500
 
     # Security
+    # Shared secret for destructive maintenance endpoints (demo reseed).
+    # Unset = those endpoints are disabled, which is the right default for a
+    # deployment nobody is actively demoing.
+    admin_token: str = ""
     secret_key: str = "dev-secret-change-in-production"
     access_token_expire_minutes: int = 60 * 24  # 24 hours
 

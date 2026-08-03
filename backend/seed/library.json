@@ -1,0 +1,510 @@
+{
+  "version": "1.0",
+  "source": "talelah-seed-stories.docx — grammar-corrected, child-simple, 27 July 2026",
+  "note": "Native script is what the child sees; romanised is a pronunciation aid for the parent. Malay is already Latin script so it carries no romanisation. Missions are authored here (the source doc specifies only that each page has one concrete physical action) and every one is checked by backend/safety/gate.py at seed time.",
+  "stories": [
+    {
+      "id": "T1",
+      "locale": "ta-SG",
+      "theme": "kindness and helping",
+      "title": "Anbu the Elephant",
+      "title_target_lang": "அன்பு யானை",
+      "title_romanised": "Anbu Yaanai",
+      "hero_name": "Anbu",
+      "hero_name_target_lang": "அன்பு",
+      "moment_text": "A story about a kind little elephant who helps a bird reach its nest.",
+      "refrain": "Anbu is kind.",
+      "refrain_target_lang": "அன்பு நல்லவன்.",
+      "learning_plan": {
+        "speaking_goal": "Say thank you for help in Tamil",
+        "target_words": ["நன்றி", "உதவி", "யானை", "பறவை"],
+        "target_phrase": "உதவிக்கு நன்றி",
+        "level": "emerging"
+      },
+      "vocabulary": [
+        {"word": "thank you", "word_target_lang": "நன்றி", "romanised": "nandri"},
+        {"word": "help", "word_target_lang": "உதவி", "romanised": "udhavi"},
+        {"word": "elephant", "word_target_lang": "யானை", "romanised": "yaanai"},
+        {"word": "bird", "word_target_lang": "பறவை", "romanised": "paravai"}
+      ],
+      "opening_choices": ["Meet Anbu", "Go to the river"],
+      "pages": [
+        {
+          "title": "A little elephant",
+          "title_target_lang": "சின்ன யானை",
+          "emoji": "🐘",
+          "narration": "Anbu is a little elephant. He lives in the forest.",
+          "narration_target_lang": "அன்பு ஒரு சின்ன யானை. அவன் காட்டில் வாழ்கிறான்.",
+          "narration_romanised": "Anbu oru chinna yaanai. Avan kaattil vaazhgiraan.",
+          "interaction": {"type": "choice", "options": ["Say hello to Anbu", "Look at the forest"]}
+        },
+        {
+          "title": "Sweet water",
+          "title_target_lang": "இனிய தண்ணீர்",
+          "emoji": "💧",
+          "narration": "Anbu goes to the river to drink water. \"Ah, the water is sweet!\"",
+          "narration_target_lang": "அன்பு தண்ணீர் குடிக்க ஆற்றுக்குப் போகிறான். \"ஆஹா, தண்ணீர் இனிக்கிறது!\"",
+          "narration_romanised": "Anbu thanneer kudikka aatrukku pogiraan. \"Aahaa, thanneer inikkiradhu!\"",
+          "interaction": {"type": "choice", "options": ["Drink with Anbu", "Listen to the river"]}
+        },
+        {
+          "title": "Who is crying?",
+          "title_target_lang": "யார் அழுகிறது?",
+          "emoji": "🐦",
+          "narration": "A little bird is crying under the tree. \"What happened to you?\" asks Anbu.",
+          "narration_target_lang": "ஒரு சின்னப் பறவை மரத்தடியில் அழுகிறது. \"உனக்கு என்ன ஆயிற்று?\" என்று அன்பு கேட்கிறான்.",
+          "narration_romanised": "Oru chinnap paravai marathadiyil azhugiradhu. \"Unakku enna aayitru?\" endru Anbu ketkiraan.",
+          "interaction": {"type": "choice", "options": ["Ask what happened", "Sit beside the bird"]}
+        },
+        {
+          "title": "The trunk lifts",
+          "title_target_lang": "தும்பிக்கை தூக்குகிறது",
+          "emoji": "🌳",
+          "narration": "\"I cannot reach the tree,\" says the bird. Anbu lifts the bird with his trunk.",
+          "narration_target_lang": "\"என்னால் மரத்தை அடைய முடியவில்லை,\" என்று பறவை சொல்கிறது. அன்பு தன் தும்பிக்கையால் பறவையைத் தூக்குகிறான்.",
+          "narration_romanised": "\"Ennaal marathai adaiya mudiyavillai,\" endru paravai solgiradhu. Anbu than thumbikkaiyaal paravaiyai thookkugiraan.",
+          "interaction": {"type": "choice", "options": ["Lift gently", "Cheer for Anbu"]}
+        },
+        {
+          "title": "Thank you, Anbu",
+          "title_target_lang": "நன்றி, அன்பு",
+          "emoji": "🪺",
+          "narration": "The bird reaches its nest. \"Thank you for the help, Anbu!\" says the bird happily.",
+          "narration_target_lang": "பறவை தன் கூட்டை அடைகிறது. \"உதவிக்கு நன்றி, அன்பு!\" என்று பறவை மகிழ்ச்சியுடன் சொல்கிறது.",
+          "narration_romanised": "Paravai than koottai adaigiradhu. \"Udhavikku nandri, Anbu!\" endru paravai magizhchiyudan solgiradhu.",
+          "interaction": {"type": "speak", "expected_intent": "உதவிக்கு நன்றி"}
+        }
+      ],
+      "room_mission": {
+        "instruction": "Stretch your arm out in front of you like Anbu's trunk, and gently move your softest toy onto the sofa.",
+        "instruction_target_lang": "அன்புவின் தும்பிக்கை போல் உன் கையை நீட்டி, உன் மென்மையான பொம்மையை மெதுவாக சோபாவில் வை."
+      },
+      "family_handoff": {
+        "prompt": "Ask your grown-up: who helped you today?",
+        "prompt_target_lang": "உன் பெரியவரிடம் கேள்: இன்று உனக்கு யார் உதவினார்கள்?",
+        "response_suggestion": "Tell them one person who helped you, and say உதவிக்கு நன்றி."
+      },
+      "ending_prompt": "Anbu helped a friend today. Who will you help tomorrow?"
+    },
+
+    {
+      "id": "T2",
+      "locale": "ta-SG",
+      "theme": "inclusion and making friends",
+      "title": "Maya's New Friend",
+      "title_target_lang": "மாயாவின் புதிய நண்பன்",
+      "title_romanised": "Maayaavin Pudhiya Nanban",
+      "hero_name": "Maya",
+      "hero_name_target_lang": "மாயா",
+      "moment_text": "A story about a myna named Maya who befriends a new boy at school so he is not alone.",
+      "refrain": "We are friends.",
+      "refrain_target_lang": "நாம் நண்பர்கள்.",
+      "learning_plan": {
+        "speaking_goal": "Invite someone to play in Tamil",
+        "target_words": ["நண்பர்கள்", "விளையாடு", "புதிய", "சேர்ந்து"],
+        "target_phrase": "நாம் நண்பர்கள்",
+        "level": "emerging"
+      },
+      "vocabulary": [
+        {"word": "friends", "word_target_lang": "நண்பர்கள்", "romanised": "nanbargal"},
+        {"word": "play", "word_target_lang": "விளையாடு", "romanised": "vilaiyaadu"},
+        {"word": "new", "word_target_lang": "புதிய", "romanised": "pudhiya"},
+        {"word": "together", "word_target_lang": "சேர்ந்து", "romanised": "serndhu"}
+      ],
+      "opening_choices": ["Go to school", "Look for Maya"],
+      "pages": [
+        {
+          "title": "A new student",
+          "title_target_lang": "புதிய மாணவன்",
+          "emoji": "🎒",
+          "narration": "Today a new student has come to school. His name is Ravi.",
+          "narration_target_lang": "இன்று பள்ளிக்கு ஒரு புதிய மாணவன் வந்திருக்கிறான். அவன் பெயர் ரவி.",
+          "narration_romanised": "Indru pallikku oru pudhiya maanavan vandhirukkiraan. Avan peyar Ravi.",
+          "interaction": {"type": "choice", "options": ["Wave to Ravi", "Look around the class"]}
+        },
+        {
+          "title": "Sitting alone",
+          "title_target_lang": "தனியாக அமர்ந்து",
+          "emoji": "🪑",
+          "narration": "Because Ravi does not know anyone, he sits alone.",
+          "narration_target_lang": "ரவி யாரையும் தெரியாததால் தனியாக அமர்ந்திருக்கிறான்.",
+          "narration_romanised": "Ravi yaaraiyum theriyaadhadhaal thaniyaaga amarndhirukkiraan.",
+          "interaction": {"type": "choice", "options": ["Sit near Ravi", "Call a friend over"]}
+        },
+        {
+          "title": "Maya sees",
+          "title_target_lang": "மாயா பார்க்கிறாள்",
+          "emoji": "👀",
+          "narration": "Ravi feels quiet and small. Maya sees this.",
+          "narration_target_lang": "ரவி அமைதியாகவும் சிறியவனாகவும் உணர்கிறான். மாயா இதைப் பார்க்கிறாள்.",
+          "narration_romanised": "Ravi amaidhiyaagavum siriyavanaagavum unargiraan. Maaya idhaip paarkkiraal.",
+          "interaction": {"type": "choice", "options": ["Go to Ravi", "Bring a game"]}
+        },
+        {
+          "title": "We are friends",
+          "title_target_lang": "நாம் நண்பர்கள்",
+          "emoji": "🤝",
+          "narration": "Maya goes to Ravi and says, \"You can play with me. We are friends!\"",
+          "narration_target_lang": "மாயா ரவியிடம் சென்று சொல்கிறாள், \"நீ என்னுடன் விளையாடலாம். நாம் நண்பர்கள்!\"",
+          "narration_romanised": "Maaya Raviyidam sendru solgiraal, \"Nee ennudan vilaiyaadalaam. Naam nanbargal!\"",
+          "interaction": {"type": "choice", "options": ["Say it with Maya", "Hold out your hand"]}
+        },
+        {
+          "title": "Not alone",
+          "title_target_lang": "தனியாக இல்லை",
+          "emoji": "🎈",
+          "narration": "The two play together happily. Now Ravi is not alone.",
+          "narration_target_lang": "இருவரும் சேர்ந்து சந்தோஷமாக விளையாடுகிறார்கள். இப்போது ரவி தனியாக இல்லை.",
+          "narration_romanised": "Iruvarum serndhu sandhoshamaaga vilaiyaadugiraargal. Ippodhu Ravi thaniyaaga illai.",
+          "interaction": {"type": "speak", "expected_intent": "நாம் நண்பர்கள்"}
+        }
+      ],
+      "room_mission": {
+        "instruction": "Find one toy that is sitting by itself, and place it next to another toy so the two of them are together.",
+        "instruction_target_lang": "தனியாக இருக்கும் ஒரு பொம்மையை எடுத்து, இன்னொரு பொம்மையின் அருகில் சேர்த்து வை."
+      },
+      "family_handoff": {
+        "prompt": "Ask your grown-up: who did you play with today?",
+        "prompt_target_lang": "உன் பெரியவரிடம் கேள்: இன்று நீ யாருடன் விளையாடினாய்?",
+        "response_suggestion": "Name one friend, and say நாம் நண்பர்கள்."
+      },
+      "ending_prompt": "Maya made room for a new friend. Who can you make room for?"
+    },
+
+    {
+      "id": "C1",
+      "locale": "zh-SG",
+      "theme": "courage and kindness",
+      "title": "Little Cat Goes Home",
+      "title_target_lang": "小猫回家",
+      "title_romanised": "Xiǎo Māo Huí Jiā",
+      "hero_name": "Mimi",
+      "hero_name_target_lang": "咪咪",
+      "moment_text": "A story about a little cat who loses her way and a kind dog who walks her home.",
+      "refrain": "Thank you, my good friend.",
+      "refrain_target_lang": "谢谢你，我的好朋友。",
+      "learning_plan": {
+        "speaking_goal": "Say thank you in Mandarin",
+        "target_words": ["谢谢", "朋友", "小猫", "回家"],
+        "target_phrase": "谢谢你",
+        "level": "emerging"
+      },
+      "vocabulary": [
+        {"word": "thank you", "word_target_lang": "谢谢", "romanised": "xièxie"},
+        {"word": "friend", "word_target_lang": "朋友", "romanised": "péngyou"},
+        {"word": "little cat", "word_target_lang": "小猫", "romanised": "xiǎo māo"},
+        {"word": "go home", "word_target_lang": "回家", "romanised": "huí jiā"}
+      ],
+      "opening_choices": ["Meet Mimi", "Look at the road"],
+      "pages": [
+        {
+          "title": "Mimi is lost",
+          "title_target_lang": "咪咪迷路了",
+          "emoji": "🐱",
+          "narration": "Mimi is a little cat. Today she has lost her way.",
+          "narration_target_lang": "咪咪是一只小猫。今天她迷路了。",
+          "narration_romanised": "Mīmi shì yì zhī xiǎo māo. Jīntiān tā mílù le.",
+          "interaction": {"type": "choice", "options": ["Call out to Mimi", "Look at the path"]}
+        },
+        {
+          "title": "The sky darkens",
+          "title_target_lang": "天黑了",
+          "emoji": "🌙",
+          "narration": "The sky slowly darkens. She meows softly: \"Meow—\"",
+          "narration_target_lang": "天渐渐黑了。她小声地叫：“喵——”",
+          "narration_romanised": "Tiān jiànjiàn hēi le. Tā xiǎoshēng de jiào: \"Miāo—\"",
+          "interaction": {"type": "choice", "options": ["Meow with Mimi", "Stay very still"]}
+        },
+        {
+          "title": "A little dog",
+          "title_target_lang": "一只小狗",
+          "emoji": "🐶",
+          "narration": "A little dog comes over. \"What is the matter? I can help you.\"",
+          "narration_target_lang": "一只小狗走过来。“你怎么了？我可以帮你。”",
+          "narration_romanised": "Yì zhī xiǎo gǒu zǒu guòlái. \"Nǐ zěnme le? Wǒ kěyǐ bāng nǐ.\"",
+          "interaction": {"type": "choice", "options": ["Say yes please", "Walk beside the dog"]}
+        },
+        {
+          "title": "Finding the way",
+          "title_target_lang": "一起找路",
+          "emoji": "🌉",
+          "narration": "The dog leads Mimi to find the way together. They walk past the big tree and the little bridge.",
+          "narration_target_lang": "小狗带着咪咪一起找路。他们走过大树和小桥。",
+          "narration_romanised": "Xiǎo gǒu dàizhe Mīmi yìqǐ zhǎo lù. Tāmen zǒuguò dà shù hé xiǎo qiáo.",
+          "interaction": {"type": "choice", "options": ["Pass the big tree", "Cross the little bridge"]}
+        },
+        {
+          "title": "Home at last",
+          "title_target_lang": "终于回家",
+          "emoji": "🏠",
+          "narration": "At last, Mimi returns home. \"Thank you, my good friend!\"",
+          "narration_target_lang": "终于，咪咪回到了家。“谢谢你，我的好朋友！”",
+          "narration_romanised": "Zhōngyú, Mīmi huí dào le jiā. \"Xièxie nǐ, wǒ de hǎo péngyou!\"",
+          "interaction": {"type": "speak", "expected_intent": "谢谢你"}
+        }
+      ],
+      "room_mission": {
+        "instruction": "Walk your toy cat slowly from the doorway back to its own sleeping spot in your room.",
+        "instruction_target_lang": "把你的玩具猫从门口慢慢送回它在房间里睡觉的地方。"
+      },
+      "family_handoff": {
+        "prompt": "Ask your grown-up: what is your favourite thing about coming home?",
+        "prompt_target_lang": "问问你的大人：回家的时候，你最喜欢什么？",
+        "response_suggestion": "Say one thing you love about home, and say 谢谢你."
+      },
+      "ending_prompt": "A kind friend walked Mimi home. Who walks with you?"
+    },
+
+    {
+      "id": "C2",
+      "locale": "zh-SG",
+      "theme": "sharing",
+      "title": "Sharing the Apple Together",
+      "title_target_lang": "一起分苹果",
+      "title_romanised": "Yìqǐ Fēn Píngguǒ",
+      "hero_name": "Lele",
+      "hero_name_target_lang": "乐乐",
+      "moment_text": "A story about a boy with one big apple who shares it with his hungry friend.",
+      "refrain": "Let us share together.",
+      "refrain_target_lang": "我们一起分吧。",
+      "learning_plan": {
+        "speaking_goal": "Invite a friend to share in Mandarin",
+        "target_words": ["一起", "分享", "苹果", "朋友"],
+        "target_phrase": "一起吃吧",
+        "level": "emerging"
+      },
+      "vocabulary": [
+        {"word": "together", "word_target_lang": "一起", "romanised": "yìqǐ"},
+        {"word": "share", "word_target_lang": "分享", "romanised": "fēnxiǎng"},
+        {"word": "apple", "word_target_lang": "苹果", "romanised": "píngguǒ"},
+        {"word": "friend", "word_target_lang": "朋友", "romanised": "péngyou"}
+      ],
+      "opening_choices": ["Meet Lele", "Look at the apple"],
+      "pages": [
+        {
+          "title": "One big apple",
+          "title_target_lang": "一个大苹果",
+          "emoji": "🍎",
+          "narration": "Lele has a big red apple. He feels very happy.",
+          "narration_target_lang": "乐乐有一个又红又大的苹果。他觉得很开心。",
+          "narration_romanised": "Lèle yǒu yí gè yòu hóng yòu dà de píngguǒ. Tā juéde hěn kāixīn.",
+          "interaction": {"type": "choice", "options": ["Hold the apple", "Smile with Lele"]}
+        },
+        {
+          "title": "Dodo is hungry",
+          "title_target_lang": "朵朵饿了",
+          "emoji": "🥺",
+          "narration": "His friend Dodo has nothing to eat. Dodo's tummy rumbles.",
+          "narration_target_lang": "他的朋友朵朵没有东西吃。朵朵的肚子咕咕叫。",
+          "narration_romanised": "Tā de péngyou Duǒduo méiyǒu dōngxi chī. Duǒduo de dùzi gūgū jiào.",
+          "interaction": {"type": "choice", "options": ["Listen to the tummy", "Look at Dodo"]}
+        },
+        {
+          "title": "Lele thinks",
+          "title_target_lang": "乐乐想一想",
+          "emoji": "💭",
+          "narration": "Lele thinks for a moment, then smiles. \"Let us share it together!\"",
+          "narration_target_lang": "乐乐想了一下，然后笑了。“我们一起吃吧！”",
+          "narration_romanised": "Lèle xiǎng le yíxià, ránhòu xiào le. \"Wǒmen yìqǐ chī ba!\"",
+          "interaction": {"type": "choice", "options": ["Say it with Lele", "Give a big smile"]}
+        },
+        {
+          "title": "Two halves",
+          "title_target_lang": "分成两半",
+          "emoji": "🤲",
+          "narration": "Lele divides the apple into two halves. He gives one half to Dodo.",
+          "narration_target_lang": "乐乐把苹果分成两半。他把一半给了朵朵。",
+          "narration_romanised": "Lèle bǎ píngguǒ fēn chéng liǎng bàn. Tā bǎ yíbàn gěi le Duǒduo.",
+          "interaction": {"type": "choice", "options": ["Hand it over", "Say here you are"]}
+        },
+        {
+          "title": "Happier together",
+          "title_target_lang": "更快乐",
+          "emoji": "😊",
+          "narration": "The two good friends share the apple together. Sharing makes them even happier.",
+          "narration_target_lang": "两个好朋友一起分苹果。分享让他们更快乐。",
+          "narration_romanised": "Liǎng gè hǎo péngyou yìqǐ fēn píngguǒ. Fēnxiǎng ràng tāmen gèng kuàilè.",
+          "interaction": {"type": "speak", "expected_intent": "一起吃吧"}
+        }
+      ],
+      "room_mission": {
+        "instruction": "Find something you have two of, and place one of them into a family member's open hand.",
+        "instruction_target_lang": "找一样你有两个的东西，把其中一个放在家人的手心里。"
+      },
+      "family_handoff": {
+        "prompt": "Ask your grown-up: what did someone share with you today?",
+        "prompt_target_lang": "问问你的大人：今天有谁和你分享了东西？",
+        "response_suggestion": "Name one thing that was shared with you, and say 谢谢."
+      },
+      "ending_prompt": "Lele's apple got smaller, but his day got bigger. What can you share?"
+    },
+
+    {
+      "id": "M1",
+      "locale": "ms-SG",
+      "theme": "gratitude and helping",
+      "title": "The Hungry Mouse-deer",
+      "title_target_lang": "Kancil yang Lapar",
+      "title_romanised": "",
+      "hero_name": "Kancil",
+      "hero_name_target_lang": "Kancil",
+      "moment_text": "A story about a little mouse-deer who cannot reach the fruit, and a bird who helps him.",
+      "refrain": "Thank you very much.",
+      "refrain_target_lang": "Terima kasih banyak.",
+      "learning_plan": {
+        "speaking_goal": "Say thank you in Malay",
+        "target_words": ["terima kasih", "menolong", "buah", "burung"],
+        "target_phrase": "Terima kasih",
+        "level": "emerging"
+      },
+      "vocabulary": [
+        {"word": "thank you", "word_target_lang": "terima kasih", "romanised": ""},
+        {"word": "to help", "word_target_lang": "menolong", "romanised": ""},
+        {"word": "fruit", "word_target_lang": "buah", "romanised": ""},
+        {"word": "bird", "word_target_lang": "burung", "romanised": ""}
+      ],
+      "opening_choices": ["Meet Kancil", "Look at the tree"],
+      "pages": [
+        {
+          "title": "A hungry morning",
+          "title_target_lang": "Pagi yang lapar",
+          "emoji": "🦌",
+          "narration": "Kancil is a little mouse-deer. This morning, his tummy is very hungry.",
+          "narration_target_lang": "Kancil ialah seekor pelanduk kecil. Pagi ini, perutnya sangat lapar.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Say good morning", "Look for food"]}
+        },
+        {
+          "title": "Fruit up high",
+          "title_target_lang": "Buah di atas",
+          "emoji": "🌴",
+          "narration": "Kancil sees ripe fruit on the tree. But the tree is too tall.",
+          "narration_target_lang": "Kancil nampak buah yang masak di atas pokok. Tetapi pokok itu terlalu tinggi.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Look up", "Walk around the tree"]}
+        },
+        {
+          "title": "Too far away",
+          "title_target_lang": "Terlalu jauh",
+          "emoji": "😔",
+          "narration": "Kancil jumps, but he cannot reach it. He feels sad.",
+          "narration_target_lang": "Kancil melompat, tetapi dia tidak sampai. Dia berasa sedih.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Sit down and rest", "Ask for help"]}
+        },
+        {
+          "title": "A bird helps",
+          "title_target_lang": "Burung menolong",
+          "emoji": "🐦",
+          "narration": "A bird flies over to help. The bird picks the fruit and gives it to Kancil.",
+          "narration_target_lang": "Seekor burung terbang datang untuk menolong. Burung itu memetik buah dan memberinya kepada Kancil.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Say thank you", "Wave to the bird"]}
+        },
+        {
+          "title": "Together",
+          "title_target_lang": "Bersama-sama",
+          "emoji": "🥭",
+          "narration": "\"Thank you very much!\" says Kancil. The two of them share the fruit together.",
+          "narration_target_lang": "\"Terima kasih banyak!\" kata Kancil. Mereka berdua berkongsi buah itu bersama-sama.",
+          "narration_romanised": "",
+          "interaction": {"type": "speak", "expected_intent": "Terima kasih"}
+        }
+      ],
+      "room_mission": {
+        "instruction": "Stretch your arms up wide like a bird's wings, then bring them down slowly. Do it three times.",
+        "instruction_target_lang": "Kembangkan tangan anda seperti sayap burung, kemudian turunkan perlahan-lahan. Buat tiga kali."
+      },
+      "family_handoff": {
+        "prompt": "Ask your grown-up: who helped you when something was too hard?",
+        "prompt_target_lang": "Tanya orang dewasa anda: siapa yang menolong anda apabila sesuatu terlalu susah?",
+        "response_suggestion": "Name one person who helped you, and say Terima kasih."
+      },
+      "ending_prompt": "Kancil could not reach alone. What is easier with a friend?"
+    },
+
+    {
+      "id": "M2",
+      "locale": "ms-SG",
+      "theme": "friendship and teamwork",
+      "title": "Aminah's Kite",
+      "title_target_lang": "Layang-Layang Aminah",
+      "title_romanised": "",
+      "hero_name": "Aminah",
+      "hero_name_target_lang": "Aminah",
+      "moment_text": "A story about a girl whose kite gets stuck, and the friend who helps her free it.",
+      "refrain": "Together, slowly.",
+      "refrain_target_lang": "Bersama, perlahan-lahan.",
+      "learning_plan": {
+        "speaking_goal": "Thank a friend for helping, in Malay",
+        "target_words": ["terima kasih", "kawan", "bersama", "layang-layang"],
+        "target_phrase": "Terima kasih",
+        "level": "emerging"
+      },
+      "vocabulary": [
+        {"word": "thank you", "word_target_lang": "terima kasih", "romanised": ""},
+        {"word": "friend", "word_target_lang": "kawan", "romanised": ""},
+        {"word": "together", "word_target_lang": "bersama", "romanised": ""},
+        {"word": "kite", "word_target_lang": "layang-layang", "romanised": ""}
+      ],
+      "opening_choices": ["Meet Aminah", "Look at the kite"],
+      "pages": [
+        {
+          "title": "A blue kite",
+          "title_target_lang": "Layang-layang biru",
+          "emoji": "🪁",
+          "narration": "Aminah has a blue kite. She wants to fly it at the field.",
+          "narration_target_lang": "Aminah mempunyai sebuah layang-layang biru. Dia mahu menerbangkannya di padang.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Hold the string", "Go to the field"]}
+        },
+        {
+          "title": "Up it goes",
+          "title_target_lang": "Naik tinggi",
+          "emoji": "💨",
+          "narration": "The wind blows strongly and the kite goes up high. Aminah runs happily.",
+          "narration_target_lang": "Angin bertiup kuat dan layang-layang naik tinggi. Aminah berlari dengan gembira.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Run with Aminah", "Watch it fly"]}
+        },
+        {
+          "title": "Stuck",
+          "title_target_lang": "Tersangkut",
+          "emoji": "🌳",
+          "narration": "Suddenly, the kite gets stuck in the tree. Aminah does not know what to do.",
+          "narration_target_lang": "Tiba-tiba, layang-layang itu tersangkut di pokok. Aminah tidak tahu apa hendak dibuat.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Call a friend", "Look at the string"]}
+        },
+        {
+          "title": "Farid comes",
+          "title_target_lang": "Farid datang",
+          "emoji": "👦",
+          "narration": "Her friend, Farid, comes to help. They pull the string slowly together.",
+          "narration_target_lang": "Kawannya, Farid, datang membantu. Mereka menarik tali itu perlahan-lahan bersama.",
+          "narration_romanised": "",
+          "interaction": {"type": "choice", "options": ["Pull slowly", "Count to three"]}
+        },
+        {
+          "title": "Flying again",
+          "title_target_lang": "Terbang semula",
+          "emoji": "🎉",
+          "narration": "The kite comes free and rises again. \"Thank you, Farid!\" says Aminah with a smile.",
+          "narration_target_lang": "Layang-layang terlepas dan naik semula. \"Terima kasih, Farid!\" kata Aminah sambil tersenyum.",
+          "narration_romanised": "",
+          "interaction": {"type": "speak", "expected_intent": "Terima kasih"}
+        }
+      ],
+      "room_mission": {
+        "instruction": "Hold one end of a scarf and ask someone to hold the other end. Then pull it slowly, together, three times.",
+        "instruction_target_lang": "Pegang satu hujung selendang dan minta seseorang memegang hujung yang satu lagi. Kemudian tarik perlahan-lahan, bersama, tiga kali."
+      },
+      "family_handoff": {
+        "prompt": "Ask your grown-up: what is something you two can only do together?",
+        "prompt_target_lang": "Tanya orang dewasa anda: apakah perkara yang hanya boleh kita buat bersama?",
+        "response_suggestion": "Name one thing you do together, and say Terima kasih."
+      },
+      "ending_prompt": "Two pairs of hands freed the kite. What will you do together tomorrow?"
+    }
+  ]
+}

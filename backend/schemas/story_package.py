@@ -124,6 +124,10 @@ class StoryScene(BaseModel):
     emoji: str = ""
     narration: str = ""
     narration_target_lang: str = ""
+    # Pronunciation aid for a parent who speaks the language but does not read
+    # the script. Optional everywhere: empty for Malay (already Latin) and for
+    # LLM-written stories, which do not produce it.
+    narration_romanised: str = ""
     visual_id: str = ""
     # Wanx-generated illustration URL for child mode (square, watercolor style)
     illustration_url: str = ""

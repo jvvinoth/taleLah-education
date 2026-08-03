@@ -2263,3 +2263,149 @@ def _heic_support() -> bool:
         return _heif_ready()
     except Exception:  # noqa: BLE001
         return False
+
+
+# ── Demo reseed (maintenance) ──────────────────────────────────────────────
+#
+# The demo account is a showpiece: it must always open on a shelf of good
+# books in three languages, never on whatever was generated while testing.
+#
+# This lives behind an HTTP endpoint rather than a standalone DB script on
+# purpose. The in-memory stores are the read path and Postgres is a
+# write-through mirror (core/persistence.py), so a script that only cleaned
+# the tables would leave the running server serving deleted stories from RAM
+# and writing them back on the next save. Doing it in-process keeps both
+# halves in step and needs no redeploy.
+
+SEED_LOCALES = {"ta-SG", "zh-SG", "ms-SG"}
+
+# Used only when the demo account has no child for one of the three languages.
+SEED_PROFILE_DEFAULTS = {
+    "ta-SG": ("Meena", "4-5", "ta"),
+    "zh-SG": ("Wei Ling", "4-5", "zh"),
+    "ms-SG": ("Aisyah", "4-5", "ms"),
+}
+
+
+def _require_admin(x_admin_token: str = Header(default="")) -> None:
+    """Gate for destructive maintenance. No token configured = no entry."""
+    if not settings.admin_token:
+        raise HTTPException(404, "Not found")
+    if not hmac.compare_digest(x_admin_token, settings.admin_token):
+        raise HTTPException(403, "Bad admin token")
+
+
+def _purge_profile_stories(profile_ids: set[str]) -> int:
+    """Drop every story (and its moments, sessions, memories, audio) for
+    these children, from memory and Neon alike."""
+    doomed = [
+        pid for pid, p in orchestrator._packages.items()
+        if p.child_profile_id in profile_ids
+    ]
+    for pid in doomed:
+        pkg = orchestrator._packages.pop(pid, None)
+        orchestrator._traces.pop(pid, None)
+        orchestrator._done_packages.discard(pid)
+        _pkg_engine.pop(pid, None)
+        _media_blobs.pop(pid, None)
+        persistence.delete("story_packages", pid)
+        persistence.delete("traces", pid)
+        persistence.delete_blobs(pid)
+        if pkg and pkg.moment_id:
+            _moments.pop(pkg.moment_id, None)
+            persistence.delete("moments", pkg.moment_id)
+
+    dead = set(doomed)
+    for sid in [s for s, x in _sessions.items() if x.story_package_id in dead]:
+        _sessions.pop(sid, None)
+        persistence.delete("story_sessions", sid)
+    for mid in [m for m, x in _memories.items() if x.story_package_id in dead]:
+        _memories.pop(mid, None)
+        persistence.delete("saved_memories", mid)
+    # Orphan moments from captures that never became a story.
+    for mid in [m for m, x in _moments.items() if x.child_profile_id in profile_ids]:
+        _moments.pop(mid, None)
+        persistence.delete("moments", mid)
+    return len(doomed)
+
+
+def _seed_profiles(adult_id: str) -> dict[str, str]:
+    """One child per seed language: reuse the account's existing children
+    where the language already matches, and only invent what is missing."""
+    mine = [
+        p for p in _profiles.values()
+        if p.adult_id == adult_id and not p.deleted_at
+    ]
+    chosen: dict[str, str] = {}
+    for locale in sorted(SEED_LOCALES):
+        match = next((p for p in mine if p.target_locale == locale
+                      and p.id not in chosen.values()), None)
+        if match:
+            chosen[locale] = match.id
+            continue
+        alias, age_band, home = SEED_PROFILE_DEFAULTS[locale]
+        pid = f"child_{uuid.uuid4().hex[:12]}"
+        _profiles[pid] = ChildProfile(
+            id=pid, adult_id=adult_id, alias=alias, age_band=age_band,
+            target_locale=locale, home_language=home,
+        )
+        persistence.save("child_profiles", pid, _profiles[pid])
+        chosen[locale] = pid
+    return chosen
+
+
+@router.post("/admin/reseed-demo", dependencies=[Depends(_require_admin)])
+async def reseed_demo(with_audio: bool = True):
+    """Wipe the demo account's stories and reinstall the authored library.
+
+    Idempotent — run it as often as you like, including right before a demo.
+    Child profiles and their photos are kept; only stories are replaced.
+    """
+    from ...seed import build_all, load_library
+
+    found = _find_adult_by_email(DEMO_EMAIL)
+    if not found:
+        ensure_demo_adult()
+        found = _find_adult_by_email(DEMO_EMAIL)
+    adult_id, _ = found
+
+    profile_for_locale = _seed_profiles(adult_id)
+
+    # Build the whole shelf BEFORE deleting anything. build_all runs each
+    # story through the safety gate and raises on the first rejection — if
+    # that happened after the purge, a bad edit to library.json would leave
+    # the demo account with no stories at all.
+    try:
+        packages = build_all(load_library(), profile_for_locale)
+    except ValueError as e:
+        raise HTTPException(422, f"Seed library rejected, nothing changed: {e}")
+
+    owned = {p.id for p in _profiles.values() if p.adult_id == adult_id}
+    removed = _purge_profile_stories(owned)
+
+    for pkg in packages:
+        orchestrator._packages[pkg.id] = pkg
+        orchestrator._traces[pkg.id] = [
+            TraceEntry("seed", "installed", f"Authored library story {pkg.story.title}")
+        ]
+        _pkg_engine[pkg.id] = "seed"
+        orchestrator.persist(pkg)
+
+    if with_audio:
+        for pkg in packages:
+            asyncio.create_task(_pregenerate_audio(pkg.id))
+
+    return {
+        "removed_stories": removed,
+        "installed_stories": len(packages),
+        "audio": "generating in background" if with_audio else "skipped",
+        "profiles": {
+            loc: {"id": pid, "alias": _profiles[pid].alias}
+            for loc, pid in profile_for_locale.items()
+        },
+        "stories": [
+            {"id": p.id, "title": p.story.title,
+             "locale": p.language.locale, "pages": len(p.story.scenes)}
+            for p in packages
+        ],
+    }
