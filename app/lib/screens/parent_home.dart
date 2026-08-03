@@ -24,6 +24,9 @@ class ParentHomeScreen extends StatefulWidget {
 
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
   final _textController = TextEditingController();
+  // Story language. Seeded from the active child's profile (see _localeFor) as
+  // soon as profiles load, so it is never a hardcoded guess — the parent can
+  // still override it per story from the pill inside the prompt box.
   String _selectedLocale = 'ta-SG';
   int _navIndex = 0;
 
@@ -73,6 +76,21 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     super.dispose();
   }
 
+  /// The story language for a child, read off their profile.
+  ///
+  /// `homeLanguage` ('ta'/'zh'/'ms') wins when it maps to a locale we support,
+  /// because profiles edited before the update call carried `targetLocale`
+  /// have a stale one — this heals them without needing a re-save. Anything
+  /// unmapped (notably 'en', whose story language is a real choice rather than
+  /// a translation of itself) falls through to `targetLocale`.
+  String _localeFor(ChildProfile p) {
+    for (final l in _locales) {
+      if (l.$1.split('-').first == p.homeLanguage) return l.$1;
+    }
+    if (_locales.any((l) => l.$1 == p.targetLocale)) return p.targetLocale;
+    return _locales.first.$1;
+  }
+
   /// Best-effort: a preview row that fails just stays hidden.
   Future<void> _loadPreviews() async {
     final app = context.read<AppState>();
@@ -103,6 +121,12 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     final activeId = app.activeProfile?.id ?? '';
     if (activeId != _previewProfileId) {
       _previewProfileId = activeId;
+      // Each child has their own home language, so the story language follows
+      // whoever is selected — including on first load, which used to sit on a
+      // hardcoded Tamil regardless of the profile. Only on *change*, so a
+      // deliberate per-story override survives the rest of the session.
+      final profile = app.activeProfile;
+      if (profile != null) _selectedLocale = _localeFor(profile);
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadPreviews());
     }
 
@@ -517,7 +541,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             ...app.profiles.map((p) {
               final selected = p.id == app.activeProfile?.id;
               final lang = _locales.firstWhere(
-                (l) => l.$1 == p.targetLocale,
+                (l) => l.$1 == _localeFor(p),
                 orElse: () => ('', '', ''),
               );
               return Padding(
@@ -525,7 +549,7 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 child: GestureDetector(
                   onTap: () {
                     app.selectProfile(p);
-                    setState(() => _selectedLocale = p.targetLocale);
+                    setState(() => _selectedLocale = _localeFor(p));
                     Navigator.pop(context);
                   },
                   child: Container(

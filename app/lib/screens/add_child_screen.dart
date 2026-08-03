@@ -93,6 +93,10 @@ class _AddChildScreenState extends State<AddChildScreen> {
           alias: name,
           ageBand: _age ?? widget.existing!.ageBand,
           homeLanguage: _language,
+          // Must travel with homeLanguage: this is what the story is actually
+          // written in. Leaving it behind meant switching a child from Tamil
+          // to Chinese kept generating Tamil books forever.
+          targetLocale: lang.$4,
         );
       } else {
         final profile = await app.createProfile(

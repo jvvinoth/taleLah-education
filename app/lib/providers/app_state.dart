@@ -195,12 +195,14 @@ class AppState extends ChangeNotifier {
     String? alias,
     String? ageBand,
     String? homeLanguage,
+    String? targetLocale,
   }) async {
     final updated = await api.updateProfile(
       profileId,
       alias: alias,
       ageBand: ageBand,
       homeLanguage: homeLanguage,
+      targetLocale: targetLocale,
     );
     final i = _profiles.indexWhere((p) => p.id == profileId);
     if (i >= 0) _profiles[i] = updated;
