@@ -55,7 +55,8 @@ export const ms: SiteContent = {
   problem: {
     eyebrow: 'Masalahnya',
     title: 'Bahasa ibunda menjadi subjek sekolah — bukan bahasa di rumah.',
-    statLabel: 'Rumah yang paling kerap berbahasa Inggeris, 2020 → 2025',
+    statLabel: 'Rumah yang paling kerap berbahasa Inggeris',
+    statDelta: '+9.8 mata dalam lima tahun',
     statValue: '58',
     lede: 'Pada 2020, Bahasa Inggeris ialah bahasa yang paling kerap dituturkan di rumah oleh <b>48.3%</b> penduduk. Menjelang 2025 ia <b>58.1%</b> — lebih tinggi dalam kalangan kanak-kanak kecil. Anak anda belajar bahasa ibunda di sekolah, tetapi menjalani kehidupan harian dalam Bahasa Inggeris.',
     source: 'Sumber: Jabatan Perangkaan Singapura · Banci 2020 & General Household Survey 2025.',

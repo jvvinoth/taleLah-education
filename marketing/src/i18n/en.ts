@@ -26,7 +26,8 @@ export const en: SiteContent = {
   problem: {
     eyebrow: 'The problem',
     title: 'Mother tongue is becoming a school subject — not a home language.',
-    statLabel: 'Homes speaking English most, 2020 → 2025',
+    statLabel: 'Homes where English is spoken most often',
+    statDelta: '+9.8 points in five years',
     statValue: '58',
     lede: "In 2020, English was the language most spoken at home by <b>48.3%</b> of residents. By 2025 that's <b>58.1%</b> — and higher among young children. Your child learns their mother tongue in school, but lives daily life in English.",
     source: 'Source: Singapore Dept. of Statistics · Census 2020 & General Household Survey 2025.',

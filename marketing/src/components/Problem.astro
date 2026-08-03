@@ -1,32 +1,170 @@
 ---
-// Problem — dark band with the Singapore language-shift stat.
+// Problem — dark band. The story is the SHIFT (48.3% → 58.1%), so it is drawn
+// as a two-bar comparison rather than one large number floating in space.
 import type { SiteContent } from '../i18n';
 interface Props { t: SiteContent }
 const { t } = Astro.props;
+
+const FROM = { year: '2020', value: 48.3 };
+const TO = { year: '2025', value: 58.1 };
 ---
 
 <section class="problem" id="problem">
   <div class="wrap">
     <div class="reveal">
       <div class="eyebrow">{t.problem.eyebrow}</div>
-      <h2 style="margin-top:16px;max-width:16ch">{t.problem.title}</h2>
+      <h2 class="p-title">{t.problem.title}</h2>
+      <p class="lede p-lede" set:html={t.problem.lede} />
     </div>
-    <div class="statwrap reveal">
-      <div class="bignum">
-        <span class="from">{t.problem.statLabel}</span>{t.problem.statValue}<span
-          style="font-size:.5em">%</span
-        >
+
+    <figure class="statfig reveal">
+      <figcaption class="statcap">{t.problem.statLabel}</figcaption>
+
+      <div class="bars" role="img" aria-label={`${t.problem.statLabel}: ${FROM.year} ${FROM.value}%, ${TO.year} ${TO.value}%`}>
+        <div class="barrow">
+          <span class="yr">{FROM.year}</span>
+          <div class="track"><span class="fill past" style={`--w:${FROM.value}%`}></span></div>
+          <span class="val">{FROM.value}<i>%</i></span>
+        </div>
+        <div class="barrow now">
+          <span class="yr">{TO.year}</span>
+          <div class="track"><span class="fill" style={`--w:${TO.value}%`}></span></div>
+          <span class="val">{TO.value}<i>%</i></span>
+        </div>
       </div>
-      <div>
-        <p class="lede" set:html={t.problem.lede} />
-        <p class="note">{t.problem.source}</p>
-      </div>
-    </div>
+
+      {t.problem.statDelta && (
+        <p class="delta"><span class="arrow" aria-hidden="true">↑</span>{t.problem.statDelta}</p>
+      )}
+    </figure>
+
+    <p class="note reveal">{t.problem.source}</p>
   </div>
 </section>
 
 <style>
-  .problem .lede :global(b) {
+  /* The old layout put a long caption INSIDE a 120px number in an `auto`
+     grid column, which swallowed the row and squeezed the prose into a
+     narrow ribbon. Everything now sits on one comfortable measure. */
+  .p-title {
+    margin-top: 16px;
+    max-width: 20ch;
+  }
+  .p-lede {
+    margin-top: 22px;
+    max-width: 62ch;
+  }
+  .p-lede :global(b) {
     color: #fff;
+  }
+
+  .statfig {
+    margin: 40px 0 0;
+    padding: 26px clamp(18px, 3vw, 32px) 22px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.04);
+    max-width: 720px;
+  }
+  .statcap {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8da39e;
+    margin-bottom: 22px;
+  }
+
+  .bars {
+    display: grid;
+    gap: 16px;
+  }
+  .barrow {
+    display: grid;
+    grid-template-columns: 4.5ch 1fr auto;
+    gap: 14px;
+    align-items: center;
+  }
+  .yr {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: #8da39e;
+  }
+  .track {
+    height: 20px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    width: var(--w);
+    border-radius: 10px;
+    background: var(--yellow);
+    transform-origin: left center;
+    animation: grow 0.9s cubic-bezier(0.2, 0.8, 0.25, 1) both;
+  }
+  .fill.past {
+    background: rgba(255, 255, 255, 0.26);
+  }
+  .barrow.now .fill {
+    animation-delay: 0.15s;
+  }
+  @keyframes grow {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fill {
+      animation: none;
+    }
+  }
+
+  .val {
+    font-family: var(--serif);
+    font-size: clamp(24px, 3.4vw, 34px);
+    line-height: 1;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    font-variation-settings: 'SOFT' 70, 'WONK' 1;
+  }
+  .val i {
+    font-style: normal;
+    font-size: 0.5em;
+    color: #8da39e;
+    margin-left: 1px;
+  }
+  .barrow.now .val {
+    color: var(--yellow);
+  }
+
+  .delta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 20px 0 0;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--yellow);
+  }
+  .delta .arrow {
+    font-size: 15px;
+  }
+
+  .note {
+    margin-top: 20px;
+    max-width: 62ch;
+  }
+
+  @media (max-width: 560px) {
+    .barrow {
+      grid-template-columns: 4ch 1fr auto;
+      gap: 10px;
+    }
   }
 </style>

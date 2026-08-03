@@ -55,7 +55,8 @@ export const zh: SiteContent = {
   problem: {
     eyebrow: '问题所在',
     title: '母语正在变成一门学校科目——而不是家里的语言。',
-    statLabel: '在家最常说英语的家庭，2020 → 2025',
+    statLabel: '在家最常说英语的家庭',
+    statDelta: '五年内上升 9.8 个百分点',
     statValue: '58',
     lede: '2020 年，<b>48.3%</b> 的居民在家最常说英语；到 2025 年已是 <b>58.1%</b>——在幼童中比例更高。孩子在学校学母语，日常生活却在英语里。',
     source: '来源：新加坡统计局 · Census 2020 与 General Household Survey 2025。',

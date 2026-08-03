@@ -44,6 +44,8 @@ export interface SiteContent {
     statValue: string;
     lede: string;
     source: string;
+    /** Comparison chart: the shift is the story, not a single number. */
+    statDelta?: string; // e.g. "+9.8 points in five years"
   };
   insight: { eyebrow: string; title: string; body: string };
   how: {
